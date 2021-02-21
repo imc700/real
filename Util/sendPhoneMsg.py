@@ -10,7 +10,7 @@ from aliyunsdkcore.request import CommonRequest
 #https://api.aliyun.com/new#/?product=Dysmsapi&version=2017-05-25&api=SendSms&params={%22RegionId%22:%22cn-hangzhou%22}&tab=DEMO&lang=PYTHON
 # 阿里短信api调用用户:imc700@1719596909413170.onaliyun.com-Hanxu7456..
 # 用户登录名称 imc700@1719596909413170.onaliyun.com
-
+# flask登录接口,cookie设置等.服务号建立和短信模板的建立.自动回复link的功能.和商城详情页接口的处理.
 
 request = CommonRequest()
 request.set_accept_format('json')
