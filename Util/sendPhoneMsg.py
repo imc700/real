@@ -10,10 +10,7 @@ from aliyunsdkcore.request import CommonRequest
 #https://api.aliyun.com/new#/?product=Dysmsapi&version=2017-05-25&api=SendSms&params={%22RegionId%22:%22cn-hangzhou%22}&tab=DEMO&lang=PYTHON
 # 阿里短信api调用用户:imc700@1719596909413170.onaliyun.com-Hanxu7456..
 # 用户登录名称 imc700@1719596909413170.onaliyun.com
-# AccessKey ID LTAI4GGjxx5FLRLgQmdVfnaG
-# AccessKey Secret vx8fTCQHEry9V7mwi7T0po7pZuQoAG
 
-client = AcsClient('LTAI4GGjxx5FLRLgQmdVfnaG', 'vx8fTCQHEry9V7mwi7T0po7pZuQoAG', 'cn-hangzhou')
 
 request = CommonRequest()
 request.set_accept_format('json')
