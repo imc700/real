@@ -19,14 +19,6 @@ def getJson(url):
         html = zlib.decompress(html, 16+zlib.MAX_WBITS)
     return json.loads(html)
 
-def youdao(text):
-    url = 'http://fanyi.youdao.com/openapi.do?keyfrom=onHomeward&key=2010176806&type=data&doctype=json&version=1.1&q=%s' \
-    % quote_plus(text.encode('utf-8'))
-    description = getJson(url)# json.loads(html)
-    if description['errorCode'] is not 0:
-        return u'**无法翻译**'
-    return u' '.join(description['translation'])
-
 
 
 

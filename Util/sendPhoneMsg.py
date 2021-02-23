@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 # coding=utf-8
-
-from aliyunsdkcore.client import AcsClient
+from aliyunsdkcore.client import *
 from aliyunsdkcore.request import CommonRequest
 
-#pip install aliyun-python-sdk-core-v3
-#pip install aliyun-python-sdk-cdn
+#pip3 install aliyun-python-sdk-core-v3
+#pip3 install aliyun-python-sdk-cdn
 #https://dysms.console.aliyun.com/dysms.htm?spm=5176.8195934.J_5834642020.4.32314378jivEWj#/overview
 #https://api.aliyun.com/new#/?product=Dysmsapi&version=2017-05-25&api=SendSms&params={%22RegionId%22:%22cn-hangzhou%22}&tab=DEMO&lang=PYTHON
 # 阿里短信api调用用户:imc700@1719596909413170.onaliyun.com-Hanxu7456..
@@ -21,7 +20,9 @@ request.set_version('2017-05-25')
 request.set_action_name('SendSms')
 
 request.add_query_param('RegionId', "cn-hangzhou")
+request.add_query_param('PhoneNumbers', "18627783779")
+request.add_query_param('SignName', "111")
+request.add_query_param('TemplateCode', "222")
 
-response = client.do_action(request)
-# python2:  print(response)
+response = AcsClient.do_action_with_exception(request)
 print(str(response, encoding='utf-8'))

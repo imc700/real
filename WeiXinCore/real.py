@@ -84,15 +84,48 @@ def order_thread():
                                                                                                                 '2020-10-15+18:18:22',
                                                                                                                 '2020-11-15+18:18:21',
                                                                                                                 tbname))
+class TextResult():
+    def __init__(self, share_url):
+        response = query_youhui_by_tpwdcode(share_url)
+        response_json = response.json()
+        self.code = response_json['code']
+        if 200==self.code:
+            self.title = response_json['data']['item_info']['title']
+            self.quanzhi = float(response_json['data']['youhuiquan'])
+            self.has_coupon = response_json['data']['has_coupon']
+            self.ori_price = float(response_json['data']['item_info']['zk_final_price'])
+            self.max_commission_rate = float(response_json['data']['max_commission_rate'])
+            if self.has_coupon:
+                self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 100.0, 2)
+            else:
+                self.fanxian = round(self.ori_price * self.max_commission_rate / 100.0, 2)
+            self.mykoulin = response_json['data']['tpwd']
+
+    def handle_to_str(self):
+        if 200==self.code:
+            return '''
+{}
+★优惠券: [红包]￥ {}
+★返现: ￥ {}
+复制本条消息,打开[手机淘宝],领券
+-------------------
+{}
+-------------------
+                    '''.format(self.title, self.quanzhi, self.fanxian, self.mykoulin)
+        else:
+            return '该商品没有返利，换一个试试吧'
 
 
 if __name__ == '__main__':
-    # app.run(port=39002, debug=True)
+    share_url = '2👈哈fQgGcCXoNFl信 https://m.tb.cn/h.4k2nVpY?sm=23de25  苹果12钢化水凝膜苹果X/xr/xs/全屏覆盖iphone7/8/plus偷窥全包边iphone11pro max磨砂纳米手机软膜抗蓝光max'
 
     # response = query_goods_by_id('571900197140')
     # response = query_youhui_by_itemid('634753362776')
-    # response = query_youhui_by_tpwdcode('2👈 ha:/啊OrSocxpkeEj啊  苹果12钢化水凝膜苹果X/xr/xs/全屏覆盖iphone7/8/plus偷窥全包边iphone11pro max磨砂纳米手机软膜抗蓝光max')
-    response = maybe_u_like_by_itemid('AirPods')
+    t_result = TextResult(share_url)
+    to_str = t_result.handle_to_str()
+    print(to_str)
+    response = query_youhui_by_tpwdcode(share_url)
+    # response = maybe_u_like_by_itemid('AirPods')
     # response = order_thread()
     response_json = response.json()
     print(response.json())

@@ -1,22 +1,18 @@
 from Handlers.api_handler import *
+from WeiXinCore.real import *
+TOKEN = 'imc700'
 
-TOKEN = 'weixin'
 
 
 def onText(wxmsg):
     '''收到文本
     Content	文本消息内容'''
     inTxt = wxmsg.Content
-    # return wxmsg.resp_text(wxmsg['FromUserName'])
-
-    if inTxt.lower().startswith('fy'):
-        return wxmsg.resp_text(youdao(inTxt[2:]))
-    elif inTxt.startswith('?') or inTxt.startswith(u'？'):
-        return wxmsg.resp_text(u'''通过发送以下列字符开头的消息可查询相关信息''')
+    if 'tb.cn' in inTxt.lower():
+        text_result = TextResult(inTxt)
+        return wxmsg.resp_text(text_result.handle_to_str())
     else:
-        if inTxt.startswith('dy'):
-            inTxt = inTxt[2:]
-        return wxmsg.resp_text(u'找不到')
+        return wxmsg.resp_text(u'97go目前仅支持淘口令返利.')
 
 
 def onImage(wxmsg):
@@ -67,7 +63,7 @@ def onLink(wxmsg):
 
 def onSubscribe(wxmsg):
     '''关注'''
-    return wxmsg.resp_text(u'感谢您的关注。你可以发“?”给我查看帮助。')
+    return wxmsg.resp_text(u'感谢您的关注。')
 
 
 def onUnsubscribe(wxmsg):

@@ -37,7 +37,6 @@ Response = {
 }
 
 
-# print(youdao(u'who'))
 
 def check_signature(request_args):
     query = request.args
@@ -49,22 +48,3 @@ def check_signature(request_args):
     s.sort()
     s = ''.join(s)
     return hashlib.sha1(s).hexdigest() == signature
-
-
-from FlaskApp import app
-
-
-@app.route('/wx', methods=['GET', 'POST'])
-def echo():
-    if not app.debug and not check_signature(request.args):
-        # 不在Debug模式下，则需要验证。
-        return ""
-    if request.method == 'GET':
-        return make_response(request.args.get('echostr', ''))
-    else:
-        wxmsg = WeiXinMsg(request.data)
-        respXml = Response[wxmsg.MsgType](wxmsg) if wxmsg.MsgType in Response else ''
-        # return respXml
-        response = make_response(respXml)
-        response.content_type = 'application/xml'
-        return response
