@@ -91,27 +91,28 @@ class TextResult():
         self.code = response_json['code']
         if 200==self.code:
             self.title = response_json['data']['item_info']['title']
-            self.quanzhi = float(response_json['data']['youhuiquan'])
             self.has_coupon = response_json['data']['has_coupon']
             self.ori_price = float(response_json['data']['item_info']['zk_final_price'])
             self.max_commission_rate = float(response_json['data']['max_commission_rate'])
             if self.has_coupon:
+                self.quanzhi = float(response_json['data']['youhuiquan'])
                 self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 100.0, 2)
             else:
+                self.quanzhi = 0
                 self.fanxian = round(self.ori_price * self.max_commission_rate / 100.0, 2)
-            self.mykoulin = response_json['data']['tpwd']
+            self.mykoulin = response_json['data']['tpwd_simple']
+            self.tar_price = round(self.ori_price - self.quanzhi, 2)
 
     def handle_to_str(self):
         if 200==self.code:
-            return '''
-{}
+            return '''★原价: ￥ {}
 ★优惠券: [红包]￥ {}
-★返现: ￥ {}
+★券后价: ￥ {}
+★额外返现: ￥ {}
 复制本条消息,打开[手机淘宝],领券
 -------------------
 {}
--------------------
-                    '''.format(self.title, self.quanzhi, self.fanxian, self.mykoulin)
+-------------------'''.format(self.ori_price, self.quanzhi, self.tar_price, self.fanxian, self.mykoulin)
         else:
             return '该商品没有返利，换一个试试吧'
 
