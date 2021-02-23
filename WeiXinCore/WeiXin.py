@@ -47,4 +47,4 @@ def check_signature(request_args):
     s = [timestamp, nonce, TOKEN]
     s.sort()
     s = ''.join(s)
-    return hashlib.sha1(s).hexdigest() == signature
+    return hashlib.sha1(s.encode('utf-8')).hexdigest() == signature
