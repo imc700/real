@@ -101,10 +101,90 @@ def create_menu():
     str1 = result.json()
 
     print(str1)
+def tbk_beian():
+    appid = "0212875e85602948"
+    secret = "34f9bc08889f56fd0408db6c0c8bbb68"
+    url = "http://api.web.ecapi.cn/taoke/getRelationOauthTpwd?apkey={}&invitercode=839F99&rtag=imc700839F99&content=onekeybeian".format(apkey)
+    headers = {'Content-type': 'application/x-www-form-urlencoded'}
+
+    response = requests.get(url, headers=headers)
+
+    print(response.content.decode())
+    response_json = response.json()
+    token = ['access_token']
+
+    ## https://api.weixin.qq.com/cgi-bin/menu/create?access_token=ACCESS_TOKEN
+    # connection = http.client.HTTPSConnection('api.weixin.qq.com')
+
+    data = {
+        "button": [
+            {
+                "type": "view",
+                "name": "优惠券",
+                "url": "http://www.soso.com/"
+            },
+            {
+                "name": "返利教程",
+                "sub_button": [
+                    {
+                        "type": "view",
+                        "name": "淘宝天猫返利",
+                        "url": "http://www.soso.com/"
+                    },
+                    {
+                        "type": "view",
+                        "name": "京东返利",
+                        "url": "http://www.soso.com/"
+                    },
+                    {
+                        "type": "view",
+                        "name": "拼多多返利",
+                        "url": "http://www.soso.com/"
+                    }
+                    # ,
+                    # {
+                    #     "type": "click",
+                    #     "name": "赞一下我们",
+                    #     "key": "V1001_GOOD"
+                    # }
+                ]
+            },
+            {
+                "name": "我的",
+                "sub_button": [
+                    {
+                        "type": "view",
+                        "name": "我的红包",
+                        "url": "http://www.soso.com/"
+                    },
+                    {
+                        "type": "view",
+                        "name": "红包记录",
+                        "url": "http://www.soso.com/"
+                    },
+                    {
+                        "type": "view",
+                        "name": "我的订单",
+                        "url": "http://www.soso.com/"
+                    }]
+            }
+        ]
+    }
+
+    headers = {'Content-type': 'application/json'}
+    result = requests.post('https://api.weixin.qq.com/cgi-bin/menu/create?access_token=' + token,
+                           data=json.dumps(data, ensure_ascii=False).encode('utf-8'),
+                           headers=headers)
+    # connection.request('POST', '/cgi-bin/menu/create?access_token=' + token + '',
+    #                    json.dumps(data, ensure_ascii=False).encode('utf-8'), headers)
+    # response = connection.getresponse()
+    str1 = result.json()
+
+    print(str1)
 
 
 if __name__ == '__main__':
-    create_menu()
+    tbk_beian()
 
 
 def onImage(wxmsg):

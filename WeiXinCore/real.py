@@ -112,9 +112,9 @@ class TextResult:
             else:
                 self.shop_type = '淘宝'
             self.item_id = response_json['data']['item_id']
-            self.coupon_start_time = response_json['data']['coupon_start_time']
-            self.coupon_end_time = response_json['data']['coupon_end_time']
-            self.has_coupon = response_json['data']['has_coupon']
+            self.coupon_start_time = response_json['data']['coupon_start_time'] if response_json['data'].__contains__('coupon_start_time') else ''
+            self.coupon_end_time = response_json['data']['coupon_end_time'] if response_json['data'].__contains__('coupon_end_time') else ''
+            self.has_coupon = response_json['data']['has_coupon'] if response_json['data'].__contains__('has_coupon') else ''
             self.ori_price = float(response_json['data']['item_info']['zk_final_price'])
             self.max_commission_rate = float(response_json['data']['max_commission_rate'])
             if self.has_coupon:
@@ -207,20 +207,7 @@ class RecommendResult:
             del item["_sa_instance_state"]
         return item
 
-def test01():
-    inTxt = '￥QykNcCn5zZh￥'
-    t_result = TextResult(share_url=inTxt)
-    template = u'''<xml>
-    <CreateTime>%s</CreateTime>
-    <MsgType><![CDATA[link]]></MsgType>
-    <Title><![CDATA[%s]]></Title>
-    <Description><![CDATA[%s]]></Description>
-    <Url><![CDATA[%s]]></Url>
-    <MsgId>%s</MsgId>
-    </xml>'''
-    return template % (
-     int(time.time()), t_result.result(), t_result.title, t_result.url,
-    int(time.time()))
+
 if __name__ == '__main__':
     share_url = '哈哈￥QykNcCn5zZh￥'
     share_url = '苹果12钢化水凝膜苹果X/xr/xs/全屏覆盖iphone7/8/plus偷窥全包边iphone11pro max磨砂纳米手机软膜抗蓝光max'

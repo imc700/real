@@ -3,7 +3,6 @@
 import xml.etree.ElementTree as ET
 import time
 
-from WeiXinCore.real import TextResult
 
 
 class WeiXinMsg(object):
