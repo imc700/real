@@ -20,6 +20,7 @@ apkey = '106dd6f8-103e-f437-6b53-43b80c09ef07'
 pid = 'mm_50401481_2105100471_110937350217'
 tbname = 'imc701'
 
+details_url = 'http://afanxyz.xyz/pages/goodsdetail/goodsdetail?goodsId='
 
 def query_goods_by_id(itemid):
     '''
@@ -63,14 +64,20 @@ def trans_tpwd_to_itemid(tpwd):
                                                                                                  tbname))
 
 
-def maybe_u_like_by_itemid(keyword):
+def maybe_u_like_by_keyword(keyword):
     '''
     关键词搜索同类商品作为详情页推荐列表,点击任何一个推荐的商品,就根据商品id去获得专属淘口令供用户购买.
     :param keyword:
-    :return:
+    :return:http://api.web.ecapi.cn/taoke/getTkMaterialItem?apkey=登录会员中心查看&pid=mm_123456_456789_789132&tbname=xxxxx
     '''
     return requests.get(
-        'http://api.web.ecapi.cn/platform/getItemList?apkey={}&page=1&keyword={}'.format(apkey, keyword))
+        'http://api.web.ecapi.cn/taoke/getTkMaterialItem?apkey={}&pid={}&tbname={}&keyword={}'.format(apkey, pid, tbname, urllib.parse.quote(keyword,safe='')))
+
+def tb_beian():
+    '''
+    http://api.web.ecapi.cn/taoke/getTbkQdBeiAn?apkey=登录会员中心查看&invitercode=r48Gjb&infotype=1&tbname=xxxxx
+    :return:
+    '''
 
 
 def order_thread():
@@ -82,15 +89,31 @@ def order_thread():
     return requests.get(
         'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}'.format(apkey,
                                                                                                                 '2020-10-15+18:18:22',
-                                                                                                                '2020-11-15+18:18:21',
-                                                                                                                tbname))
-class TextResult():
-    def __init__(self, share_url):
-        response = query_youhui_by_tpwdcode(share_url)
+                                                                                                                '2020-11-15+18:18:21', tbname))
+
+
+class TextResult:
+    def __init__(self, share_url=None, itemid=None):
+        if share_url:
+            response = query_youhui_by_tpwdcode(share_url)
+        if itemid:
+            response = query_youhui_by_itemid(itemid)
         response_json = response.json()
         self.code = response_json['code']
-        if 200==self.code:
+        print('come')
+        if 200 == self.code:
             self.title = response_json['data']['item_info']['title']
+            self.shop_name = response_json['data']['item_info']['nick']
+            self.selled_goods_count = response_json['data']['item_info']['volume']
+            self.small_images = response_json['data']['item_info']['small_images']['string']
+            self.pict_url = response_json['data']['item_info']['pict_url']
+            if response_json['data']['item_info']['user_type'] == 1:
+                self.shop_type = '天猫'
+            else:
+                self.shop_type = '淘宝'
+            self.item_id = response_json['data']['item_id']
+            self.coupon_start_time = response_json['data']['coupon_start_time']
+            self.coupon_end_time = response_json['data']['coupon_end_time']
             self.has_coupon = response_json['data']['has_coupon']
             self.ori_price = float(response_json['data']['item_info']['zk_final_price'])
             self.max_commission_rate = float(response_json['data']['max_commission_rate'])
@@ -102,9 +125,16 @@ class TextResult():
                 self.fanxian = round(self.ori_price * self.max_commission_rate / 100.0, 2)
             self.mykoulin = response_json['data']['tpwd_simple']
             self.tar_price = round(self.ori_price - self.quanzhi, 2)
-
+            self.final_price = round(self.tar_price - self.fanxian, 2)
+            #todo 此处的前端详情页要接收淘口令去走接口拿同样的数据显示在页面.因为不知道如何把json对象包在链接里,后期优化建议是用户查询数据后存在数据库,详情页直接取数据库不走云商接口.
+            self.url = details_url +str(self.item_id)
+        print('go---')
     def handle_to_str(self):
-        if 200==self.code:
+        '''
+        因为发现在用户页复制如下口令,无法生效.但是单独复制口令是可以的.所以放弃改方案.用网页.
+        :return:
+        '''
+        if 200 == self.code:
             return '''★原价: ￥ {}
 ★优惠券: [红包]￥ {}
 ★券后价: ￥ {}
@@ -116,17 +146,92 @@ class TextResult():
         else:
             return '该商品没有返利，换一个试试吧'
 
+    def result(self):
+        return '''【97go】优惠券￥{} 返利红包￥{} 到手价￥{}'''.format(self.quanzhi, self.fanxian, self.final_price)
 
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+class RecommendItem:
+    def __init__(self, item):
+        self.title = item['title']
+        self.selled_goods_count = item['volume']
+        self.pict_url = item['pict_url']
+        if item['user_type'] == 1:
+            self.shop_type = '天猫'
+        else:
+            self.shop_type = '淘宝'
+        self.item_id = item['num_iid']
+        self.shop_name = item['shop_title']
+        self.ori_price = float(item['zk_final_price'])
+        self.max_commission_rate = float(item['commission_rate'])
+        self.quanzhi = float(item['youhuiquan'])
+        self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 10000.0, 2)
+        self.tar_price = round(self.ori_price - self.quanzhi, 2)
+        self.final_price = round(self.tar_price - self.fanxian, 2)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+class RecommendResult:
+    '''
+    商品详情页的更多推荐
+    苹果12钢化水凝膜苹果
+1.5m加长2米3米iPhone6数据线6s苹果5s手机7Plus充电线器7P8X超长3m快充Xs原裝正品ipad
+    '''
+    def __init__(self, keyword):
+        response = maybe_u_like_by_keyword(keyword)
+        response_json = response.json()
+        self.code = response_json['code']
+        results = []
+        if 200 == self.code:
+            for item in response_json['data']:
+                if 'youhuiquan' in item.keys():
+                    recommend_item = RecommendItem(item)
+                    results.append(recommend_item.to_json())
+        self.results = results
+
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+def test01():
+    inTxt = '￥QykNcCn5zZh￥'
+    t_result = TextResult(share_url=inTxt)
+    template = u'''<xml>
+    <CreateTime>%s</CreateTime>
+    <MsgType><![CDATA[link]]></MsgType>
+    <Title><![CDATA[%s]]></Title>
+    <Description><![CDATA[%s]]></Description>
+    <Url><![CDATA[%s]]></Url>
+    <MsgId>%s</MsgId>
+    </xml>'''
+    return template % (
+     int(time.time()), t_result.result(), t_result.title, t_result.url,
+    int(time.time()))
 if __name__ == '__main__':
-    share_url = '2👈哈fQgGcCXoNFl信 https://m.tb.cn/h.4k2nVpY?sm=23de25  苹果12钢化水凝膜苹果X/xr/xs/全屏覆盖iphone7/8/plus偷窥全包边iphone11pro max磨砂纳米手机软膜抗蓝光max'
-
+    share_url = '哈哈￥QykNcCn5zZh￥'
+    share_url = '苹果12钢化水凝膜苹果X/xr/xs/全屏覆盖iphone7/8/plus偷窥全包边iphone11pro max磨砂纳米手机软膜抗蓝光max'
+    print((share_url[0:5]))
     # response = query_goods_by_id('571900197140')
     # response = query_youhui_by_itemid('634753362776')
-    t_result = TextResult(share_url)
-    to_str = t_result.handle_to_str()
-    print(to_str)
+    # t_result = TextResult(share_url)
+    # to_str = t_result.handle_to_str()
+    # print(to_str)
     response = query_youhui_by_tpwdcode(share_url)
-    # response = maybe_u_like_by_itemid('AirPods')
+    # response = maybe_u_like_by_keyword('AirPods')
     # response = order_thread()
     response_json = response.json()
     print(response.json())

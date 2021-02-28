@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from flask import request, render_template, Flask, make_response
+from flask import request, render_template, Flask, make_response, jsonify
 from flask_wtf import FlaskForm
 from werkzeug.security import generate_password_hash, check_password_hash
 from wtforms import *
@@ -8,6 +8,7 @@ from wtforms.validators import DataRequired, Optional, Length
 from flask_login import login_manager, UserMixin, login_required, login_user
 from FlaskApp.wx_login_or_register import get_access_code, get_wx_user_info, login_or_register
 from FlaskApp.model import db
+from Util.MyEncoder import MyEncoder
 from WeiXinCore.WeiXin import *
 from WeiXinCore.WeiXinMsg import WeiXinMsg
 from WeiXinCore.real import *
@@ -125,6 +126,7 @@ ctx = app.app_context()
 #     return "Hello, World!"
 
 
+
 @app.route('/wx', methods=['GET', 'POST'])
 def echo():
     if not app.debug and not check_signature(request.args):
@@ -139,6 +141,35 @@ def echo():
         response = make_response(respXml)
         response.content_type = 'application/xml'
         return response
+
+
+@app.route('/tb/details_one', methods=['GET', 'POST'])
+def tb_details_one():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        itemid = req_data['itemid']
+        t_result = TextResult(itemid=itemid)
+        return jsonify(t_result.to_json())
+    return None
+
+
+@app.route('/tb/details_many', methods=['GET', 'POST'])
+def tb_details_many():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        keyword = req_data['keyword']
+        if len(keyword) > 30:
+            # keyword = keyword[0:int(round(len(keyword) / 2, 0))]
+            keyword = keyword[0:30]
+        t_result = RecommendResult(keyword)
+        return jsonify(t_result.to_json())
+    return None
+
+
+@app.route('/index', methods=['GET', 'POST'])
+def tb_details():
+    req_data = request.get_json(silent=True)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=39004)

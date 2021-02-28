@@ -4,7 +4,7 @@ import urllib.request
 import zlib
 from urllib import *
 from urllib.parse import quote_plus
-
+from WeiXinCore.real import *
 from WeiXinCore.WeiXinMsg import *
 
 
@@ -19,6 +19,7 @@ def getJson(url):
         html = zlib.decompress(html, 16+zlib.MAX_WBITS)
     return json.loads(html)
 
-
+def api_tb_details(itemid):
+    pass
 
 

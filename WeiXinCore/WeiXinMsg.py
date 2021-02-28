@@ -3,6 +3,8 @@
 import xml.etree.ElementTree as ET
 import time
 
+from WeiXinCore.real import TextResult
+
 
 class WeiXinMsg(object):
     def __init__(self, xml_body=None):
@@ -73,20 +75,27 @@ class WeiXinMsg(object):
 <Content><![CDATA[%s]]></Content>
 <FuncFlag>%s</FuncFlag>
 </xml>'''
-        return template % (self.ToUserName, self.FromUserName, int(time.time()), text, funcFlag)
+        text_msg = template % (self.ToUserName, self.FromUserName, int(time.time()), text, funcFlag)
+        print(text_msg)
+        return text_msg
 
-    #todo 2021年2月20日23:05:29抽空在此处增加一个回复链接消息的方法
-    def resp_link(self):
-        template = u'''<xml>
-<ToUserName><![CDATA[toUser]]></ToUserName>
-<FromUserName><![CDATA[fromUser]]></FromUserName>
-<CreateTime>1351776360</CreateTime>
-<MsgType><![CDATA[link]]></MsgType>
-<Title><![CDATA[公众平台官网链接]]></Title>
-<Description><![CDATA[公众平台官网链接]]></Description>
-<Url><![CDATA[url]]></Url>
-<MsgId>1234567890123456</MsgId>
-</xml>'''
-        return None
-        # return template % (self.ToUserName, self.FromUserName, int(time.time()), text, funcFlag)
+    # todo 2021年2月20日23:05:29抽空在此处增加一个回复链接消息的方法
+    def resp_link(self, t_result):
+        template3 = u'''<xml>
+<ToUserName><![CDATA[{}]]></ToUserName>
+<FromUserName><![CDATA[{}]]></FromUserName>
+<CreateTime>{}</CreateTime>
+<MsgType><![CDATA[news]]></MsgType>
+<ArticleCount>1</ArticleCount>
+<Articles>
+<item>
+  <Title><![CDATA[{}]]></Title>
+  <Description><![CDATA[{}]]></Description>
+  <PicUrl><![CDATA[{}]]></PicUrl>
+  <Url><![CDATA[{}]]></Url>
+</item>
+</Articles>
+</xml>'''.format(self.ToUserName, self.FromUserName, int(time.time()), t_result.result(),
+                 t_result.title,t_result.pict_url, t_result.url)
+        return template3
 
