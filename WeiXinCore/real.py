@@ -1,5 +1,4 @@
 import traceback
-from flask import Flask, render_template, g, json, request
 import pymysql
 import urllib.parse
 import requests
@@ -88,19 +87,20 @@ def order_thread():
     '''
     return requests.get(
         'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}'.format(apkey,
-                                                                                                                '2020-10-15+18:18:22',
-                                                                                                                '2020-11-15+18:18:21', tbname))
+                                                                                                                '2020-10-15+18:18:22',''))
+
 
 
 class TextResult:
-    def __init__(self, share_url=None, itemid=None):
+    def __init__(self, share_url=None, itemid=None, username=None):
+        self.username = username
+        self.intext = share_url
         if share_url:
             response = query_youhui_by_tpwdcode(share_url)
         if itemid:
             response = query_youhui_by_itemid(itemid)
         response_json = response.json()
         self.code = response_json['code']
-        print('come')
         if 200 == self.code:
             self.title = response_json['data']['item_info']['title']
             self.shop_name = response_json['data']['item_info']['nick']
@@ -128,7 +128,6 @@ class TextResult:
             self.final_price = round(self.tar_price - self.fanxian, 2)
             #todo 此处的前端详情页要接收淘口令去走接口拿同样的数据显示在页面.因为不知道如何把json对象包在链接里,后期优化建议是用户查询数据后存在数据库,详情页直接取数据库不走云商接口.
             self.url = details_url +str(self.item_id)
-        print('go---')
     def handle_to_str(self):
         '''
         因为发现在用户页复制如下口令,无法生效.但是单独复制口令是可以的.所以放弃改方案.用网页.
@@ -155,6 +154,8 @@ class TextResult:
         if "_sa_instance_state" in item:
             del item["_sa_instance_state"]
         return item
+
+
 
 class RecommendItem:
     def __init__(self, item):

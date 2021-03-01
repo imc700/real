@@ -20,7 +20,7 @@ EventType = {
     "scan": onScan,
     "location": onEventLocation,
     "click": onClick,
-    "view": onView
+    "view": onView,
 }
 # def onEvent(wxmsg):
 #    return EventType[wxmsg.Event](wxmsg) if EventType.__contains__(wxmsg.Event) else ''

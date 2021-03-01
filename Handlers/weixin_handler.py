@@ -1,4 +1,3 @@
-from Handlers.api_handler import *
 from WeiXinCore.real import *
 import requests
 import json
@@ -6,19 +5,21 @@ import http.client
 
 TOKEN = 'imc700'
 
+def record_msg():
+    pass
+    # new Us
 
 def onText(wxmsg):
     '''收到文本
     Content	文本消息内容'''
     inTxt = wxmsg.Content
     if 'tb.cn' in inTxt.lower():
-        t_result = TextResult(share_url=inTxt)
+        t_result = TextResult(share_url=inTxt, username=wxmsg.ToUserName)
         if t_result.code != 200:
-            return wxmsg.resp_text('该商品没有返利，换一个试试吧')
-        print('ready return--')
-        return wxmsg.resp_link(t_result)
+            return wxmsg.resp_text('该商品没有返利，换一个试试吧'), t_result
+        return wxmsg.resp_link(t_result), t_result
     else:
-        return wxmsg.resp_text(u'97go目前仅支持淘口令返利.')
+        return wxmsg.resp_text(u'97go目前仅支持淘口令返利.'), None
 
 #wx_2_-1
 def create_menu():
