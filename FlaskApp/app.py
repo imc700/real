@@ -14,7 +14,7 @@ from WeiXinCore.real import TextResult
 
 app = Flask(__name__)
 ctx = app.app_context()
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:ssss2222@116.63.138.138:3306/real?charset=utf8mb4'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:ssss2222@116.63.138.139:3306/real?charset=utf8mb4'
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 # 开启sql语句的显示
@@ -85,11 +85,14 @@ class UserMoneyRecord(db.Model):
 
 class Order(db.Model):
     '''
-    增加等级机制.
+    增加等级机制.增加赞助功能.(接微信支付.连续交易30天可申请给用户发红包权限)(增加等级介绍页面)
     进场即青铜.
     买两单即白银.
-    买五单即黄金.
-    买十单即钻石.
+    买五单或赞助5块钱即黄金.(新增权限:确认收货五分钟内即可提现.)
+    买十单或赞助10块钱即钻石.
+
+
+
     (ps:不同等级的返利比例不同.随等级增加而升高.)
 
     用户进入网页时,拿到用户openid时就增加一条用户表.
