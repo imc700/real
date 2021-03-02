@@ -2,21 +2,14 @@ import datetime
 
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
-from flask import request, render_template, Flask, make_response, jsonify
-from flask_wtf import FlaskForm
-from werkzeug.security import generate_password_hash, check_password_hash
-from Handlers.weixin_handler import *
-from wtforms.validators import DataRequired, Optional, Length
+from flask import jsonify
 
-from flask_login import login_manager, UserMixin, login_required, login_user
-from Util.MyEncoder import MyEncoder
 from WeiXinCore.WeiXin import *
 from WeiXinCore.WeiXinMsg import WeiXinMsg
 from WeiXinCore.real import TextResult
 
 app = Flask(__name__)
 ctx = app.app_context()
-ctx.g.user_map = {}
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:ssss2222@116.63.138.138:3306/real?charset=utf8mb4'
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
@@ -25,7 +18,6 @@ app.config['SQLALCHEMY_ECHO'] = True
 # 继承db.model 是为了方便操作数据库
 # 注册数据库连接
 db = SQLAlchemy(app)
-
 
 class Msg(db.Model):
     __tablename = 'msg'
@@ -80,6 +72,10 @@ class User(db.Model):
         item = self.__dict__
         if "_sa_instance_state" in item:
             del item["_sa_instance_state"]
+        if "create_time" in item:
+            del item["create_time"]
+        if "update_time" in item:
+            del item["update_time"]
         return item
 
 
@@ -155,6 +151,25 @@ class Order(db.Model):
         item = self.__dict__
         if "_sa_instance_state" in item:
             del item["_sa_instance_state"]
+        return item
+
+
+class CodeRecord(db.Model):
+    __tablename = 'code_record'
+    code = db.Column(db.String(256), primary_key=True)
+    openid = db.Column(db.String(256), nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        if "create_time" in item:
+            del item["create_time"]
+        if "update_time" in item:
+            del item["update_time"]
         return item
 
 
@@ -309,17 +324,33 @@ def tb_details_one():
     return None
 
 
+@app.route('/wx/order_tx_counts', methods=['GET', 'POST'])
+def wx_order_tx_counts():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        openid = req_data['openid']
+        order_count = str(Order.query.filter_by(username=openid).count())
+        tixian_count = str(TixianRecord.query.filter_by(username=openid).count())
+        result = {'order_count': order_count, 'tixian_count': tixian_count}
+        return jsonify(result)
+    else:
+        return None
+
+
 @app.route('/wx/login_user', methods=['GET', 'POST'])
 def wx_login_user():
     req_data = request.get_json(silent=True)
     if req_data:
         code = req_data['code']
+        print(1)
+        print(code)
         openid = get_openid(code)
+        print(2)
+        print(openid)
         user = User.query.filter_by(username=openid).first()
         if user:
+            print('old')
             # 若不是新用户,就查出订单数和提现数
-            user.order_count = Order.query.filter_by(username=openid).count()
-            user.tixian_count = TixianRecord.query.filter_by(username=openid).count()
         else:
             user = User(username=openid,
                         dai_tixain=0,
@@ -341,14 +372,20 @@ def wx_login_user():
 
 
 def get_openid(code):
-    if ctx.g.user_map.__contains__(code):
-        openid = ctx.g.user_map[code]
+    code_record = CodeRecord.query.get(code)
+    if code_record:
+        openid = code_record.openid
+        print('use the old openid')
     else:
         t_result = requests.get(
             'https://api.weixin.qq.com/sns/oauth2/access_token?appid=' + appid + '&secret=' + secret + '&code=' + code + '&grant_type=authorization_code')
         result_json = t_result.json()
+        print(result_json)
         openid = result_json['openid']
-        ctx.g.user_map[code] = openid
+        code_record = CodeRecord(code=code, openid=openid)
+        db.session.add(code_record)
+        db.session.commit()
+        print('use the new openid')
     return openid
 
 
@@ -370,7 +407,7 @@ def tb_order_job():
 
 
 def tb_order_job2():
-    #todo 买云商的v1会员,然后走订单接口.(注意防止漏掉或者多查),防漏就获取近5分钟的订单,多查就定义个全局set.
+    # todo 买云商的v1会员,然后走订单接口.(注意防止漏掉或者多查),防漏就获取近5分钟的订单,多查就定义个全局set.
     results = [{}]
     orders = Order.query.all()
 
@@ -389,4 +426,7 @@ def tb_order_task():
 
 
 if __name__ == '__main__':
+    # user = User.query.filter_by(username='111').first()
+    # user_serialize = user.serialize()
+    # print()
     app.run(host='0.0.0.0', port=39004)
