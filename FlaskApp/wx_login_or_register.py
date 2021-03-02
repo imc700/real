@@ -1,7 +1,6 @@
 import json
 from urllib import parse, request
 
-from FlaskApp.model import UserLoginMethod, User, db
 
 def get_access_code(code, flag):
     """
@@ -102,51 +101,5 @@ def get_wx_user_info(access_data: dict):
         return None
 
 
-def login_or_register(wx_user_info):
-    """
-    验证该用户是否注册本平台，如果未注册便注册后登陆，否则直接登陆。
-    :param wx_user_info:拉取到的微信用户信息
-    :return:
-    """
-    # 微信统一ID
-    unionid = wx_user_info.get("unionid")
-    # 用户昵称
-    nickname = wx_user_info.get("nickname")
-    # 拉取微信用户信息失败
-    if unionid is None:
-        return None
-
-    # 判断用户是否存在与本系统
-    user_login = db.session(UserLoginMethod). \
-        filter(UserLoginMethod.login_method == "WX",
-               UserLoginMethod.identification == unionid, ).first()
-    # 存在则直接返回用户信息
-    if user_login:
-        user = db.session.query(User.id, User.name). \
-            filter(User.id == user_login.user_id).first()
-        data = dict(zip(user.keys(), user))
-        return data
-    # 不存在则先新建用户然后返回用户信息
-    else:
-        try:
-            # 新建用户信息
-            new_user = User(name=nickname, age=20)
-            db.session.add(new_user)
-            db.session.flush()
-            # 新建用户登陆方式
-            new_user_login = UserLoginMethod(user_id=new_user.id,
-                                             login_method="WX",
-                                             identification=unionid,
-                                             access_code=None)
-            db.session.add(new_user_login)
-            db.session.flush()
-            # 提交
-            db.session.commit()
-        except Exception as e:
-            print(e)
-            return None
-
-        data = dict(id=new_user.id, name=User.name)
-        return data
 
 

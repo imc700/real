@@ -22,9 +22,10 @@ def onText(wxmsg):
         return wxmsg.resp_text(u'97go目前仅支持淘口令返利.'), None
 
 #wx_2_-1
+appid = "wx0212875e85602959"
+secret = "34f9bc08889f56fd0408db6c0c8bbb79"
 def create_menu():
-    appid = "0212875e85602948"
-    secret = "34f9bc08889f56fd0408db6c0c8bbb68"
+
     url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=" + appid + "&secret=" + secret
     headers = {'Content-type': 'application/x-www-form-urlencoded'}
 

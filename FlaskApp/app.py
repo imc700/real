@@ -1,12 +1,14 @@
+import datetime
+
+from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from flask import request, render_template, Flask, make_response, jsonify
 from flask_wtf import FlaskForm
 from werkzeug.security import generate_password_hash, check_password_hash
-from wtforms import *
+from Handlers.weixin_handler import *
 from wtforms.validators import DataRequired, Optional, Length
 
 from flask_login import login_manager, UserMixin, login_required, login_user
-from FlaskApp.wx_login_or_register import get_access_code, get_wx_user_info, login_or_register
 from Util.MyEncoder import MyEncoder
 from WeiXinCore.WeiXin import *
 from WeiXinCore.WeiXinMsg import WeiXinMsg
@@ -14,7 +16,8 @@ from WeiXinCore.real import TextResult
 
 app = Flask(__name__)
 ctx = app.app_context()
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:ssss2222@116.63.138.139:3306/real?charset=utf8mb4'
+ctx.g.user_map = {}
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:ssss2222@116.63.138.138:3306/real?charset=utf8mb4'
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 # 开启sql语句的显示
@@ -51,7 +54,8 @@ class Msg(db.Model):
 
 class User(db.Model):
     '''
-
+    比如赞助会员只能拥有1个月的钻石权限
+    等级的修改也加入到money_record表中,若等级有效期到了,可追溯record表,按时间倒序取第二个.
     '''
     __tablename = 'user'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -63,8 +67,20 @@ class User(db.Model):
     leiji_shouru = db.Column(db.String(256), nullable=True)
     xuyao_tuikuan = db.Column(db.String(256), nullable=True)
     level = db.Column(db.String(256), nullable=True)
+    level_dead_line = db.Column(db.String(256), nullable=True)
     alipay_name = db.Column(db.String(256), nullable=True)
     alipay_account = db.Column(db.String(256), nullable=True)
+    order_count = db.Column(db.String(256), nullable=True)
+    tixian_count = db.Column(db.String(256), nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
 
 
 class UserMoneyRecord(db.Model):
@@ -81,6 +97,15 @@ class UserMoneyRecord(db.Model):
     leiji_shouru = db.Column(db.String(256), nullable=True)
     xuyao_tuikuan = db.Column(db.String(256), nullable=True)
     trade_parent_id = db.Column(db.String(256), nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
 
 
 class Order(db.Model):
@@ -95,9 +120,13 @@ class Order(db.Model):
 
     (ps:不同等级的返利比例不同.随等级增加而升高.)
 
-    用户进入网页时,拿到用户openid时就增加一条用户表.
+    --用户进入网页时,拿到用户openid时就增加一条用户表.
 
     订单线程每3分钟取一次联盟订单.根据订单状态情况完成以下逻辑:
+    淘客订单状态
+    12-付款，13-关闭，14-确认收货，3-结算成功
+
+
     已付款：指订单已付款，但还未确认收货
         增加:一条订单记录
         更新:用户的dai_tixain += actual_fanli
@@ -117,6 +146,17 @@ class Order(db.Model):
     sys_status = db.Column(db.String(256), nullable=True)
     pay_price = db.Column(db.String(256), nullable=True)
     actual_fanli = db.Column(db.String(256), nullable=True)
+    response_text = db.Column(db.Text(), nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
 
 class TixianRecord(db.Model):
     __tablename = 'tixian_record'
@@ -126,6 +166,16 @@ class TixianRecord(db.Model):
     fafang_status = db.Column(db.String(256), nullable=True)
     fafang_time = db.Column(db.String(256), nullable=True)
     in_out = db.Column(db.String(256), nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
 
 db.create_all()
 
@@ -259,6 +309,49 @@ def tb_details_one():
     return None
 
 
+@app.route('/wx/login_user', methods=['GET', 'POST'])
+def wx_login_user():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        code = req_data['code']
+        openid = get_openid(code)
+        user = User.query.filter_by(username=openid).first()
+        if user:
+            # 若不是新用户,就查出订单数和提现数
+            user.order_count = Order.query.filter_by(username=openid).count()
+            user.tixian_count = TixianRecord.query.filter_by(username=openid).count()
+        else:
+            user = User(username=openid,
+                        dai_tixain=0,
+                        ke_tixain=0,
+                        yi_tixain=0,
+                        dai_shenhe=0,
+                        leiji_shouru=0,
+                        xuyao_tuikuan=0,
+                        order_count=0,
+                        tixian_count=0,
+                        level='',
+                        level_dead_line='',
+                        alipay_name='',
+                        alipay_account='')
+            db.session.add(user)
+            db.session.commit()
+        return jsonify(user.to_json())
+    return None
+
+
+def get_openid(code):
+    if ctx.g.user_map.__contains__(code):
+        openid = ctx.g.user_map[code]
+    else:
+        t_result = requests.get(
+            'https://api.weixin.qq.com/sns/oauth2/access_token?appid=' + appid + '&secret=' + secret + '&code=' + code + '&grant_type=authorization_code')
+        result_json = t_result.json()
+        openid = result_json['openid']
+        ctx.g.user_map[code] = openid
+    return openid
+
+
 @app.route('/tb/details_many', methods=['GET', 'POST'])
 def tb_details_many():
     req_data = request.get_json(silent=True)
@@ -272,9 +365,27 @@ def tb_details_many():
     return None
 
 
-@app.route('/index', methods=['GET', 'POST'])
-def tb_details():
-    req_data = request.get_json(silent=True)
+def tb_order_job():
+    pass
+
+
+def tb_order_job2():
+    #todo 买云商的v1会员,然后走订单接口.(注意防止漏掉或者多查),防漏就获取近5分钟的订单,多查就定义个全局set.
+    results = [{}]
+    orders = Order.query.all()
+
+
+def tb_order_task():
+    print("task start " + str(os.getpid()))
+    scheduler = APScheduler()
+    scheduler.init_app(app)
+    # 淘宝联盟查询订单的定时任务，每隔60s执行1次
+    scheduler.add_job(func=tb_order_job, trigger='interval', seconds=60, id='tb_order_task')
+    scheduler.start()
+
+
+# 写在main里面，IIS不会运行
+# tb_order_task()
 
 
 if __name__ == '__main__':
