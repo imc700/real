@@ -207,8 +207,8 @@ def tb_order_job():
                                   shop_type=item['order_type'],
                                   item_title=item['item_title'],
                                   paid_time=item['tk_paid_time'],
-                                  order_status=item['tk_status'],
-                                  sys_status=item['tk_status'],
+                                  order_status='已付款' if item['tk_status']==12 else item['tk_status'],
+                                  sys_status='已付款' if item['tk_status']==12 else item['tk_status'],
                                   pay_price=item['alipay_total_price'],
                                   actual_pre_fanli=item['pub_share_pre_fee'],
                                   actual_fanli=item['pub_share_fee'],
@@ -233,8 +233,10 @@ def tb_order_job():
                 user = User.query.filter_by(username=first.username).first()
                 user.dai_tixian = float(user.dai_tixian) + float(order.actual_pre_fanli)
                 db.session.commit()
-                UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli, trade_parent_id=item['trade_parent_id'])
-    return None
+                record = UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli,
+                                         trade_parent_id=item['trade_parent_id'])
+                db.session.add(record)
+                db.session.commit()
 
 
 
@@ -550,7 +552,7 @@ def tb_order_task():
 
 
 # 写在main里面，IIS不会运行
-# tb_order_task()
+tb_order_task()
 
 
 if __name__ == '__main__':
