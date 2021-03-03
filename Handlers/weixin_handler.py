@@ -22,8 +22,8 @@ def onText(wxmsg):
         return wxmsg.resp_text(u'97go目前仅支持淘口令返利.'), None
 
 #9
-appid = "wx0212875e8560295"
-secret = "34f9bc08889f56fd0408db6c0c8bbb7"
+appid = "wx0212875e85602959"
+secret = "34f9bc08889f56fd0408db6c0c8bbb79"
 def create_menu():
 
     url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=" + appid + "&secret=" + secret
@@ -43,7 +43,7 @@ def create_menu():
             {
                 "type": "view",
                 "name": "优惠券",
-                "url": "http://www.soso.com/"
+                "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx0212875e85602959&redirect_uri=http://afanxyz.xyz&response_type=code&scope=snsapi_base&state=1&#wechat_redirect"
             },
             {
                 "name": "返利教程",
@@ -77,17 +77,17 @@ def create_menu():
                     {
                         "type": "view",
                         "name": "我的红包",
-                        "url": "http://www.soso.com/"
+                        "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx0212875e85602959&redirect_uri=http://afanxyz.xyz/pages/mine/mine&response_type=code&scope=snsapi_base&state=1&#wechat_redirect"
                     },
                     {
                         "type": "view",
                         "name": "红包记录",
-                        "url": "http://www.soso.com/"
+                        "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx0212875e85602959&redirect_uri=http://afanxyz.xyz/pages/mine/reward&response_type=code&scope=snsapi_base&state=1&#wechat_redirect"
                     },
                     {
                         "type": "view",
                         "name": "我的订单",
-                        "url": "http://www.soso.com/"
+                        "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx0212875e85602959&redirect_uri=http://afanxyz.xyz/pages/mine/order&response_type=code&scope=snsapi_base&state=1&#wechat_redirect"
                     }]
             }
         ]
@@ -186,7 +186,7 @@ def tbk_beian():
 
 
 if __name__ == '__main__':
-    tbk_beian()
+    create_menu()
 
 
 def onImage(wxmsg):

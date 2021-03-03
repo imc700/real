@@ -1,3 +1,4 @@
+import datetime
 import traceback
 import pymysql
 import urllib.parse
@@ -20,6 +21,7 @@ pid = 'mm_50401481_2105100471_110937350217'
 tbname = 'imc701'
 
 details_url = 'http://afanxyz.xyz/pages/goodsdetail/goodsdetail?goodsId='
+
 
 def query_goods_by_id(itemid):
     '''
@@ -70,7 +72,12 @@ def maybe_u_like_by_keyword(keyword):
     :return:http://api.web.ecapi.cn/taoke/getTkMaterialItem?apkey=登录会员中心查看&pid=mm_123456_456789_789132&tbname=xxxxx
     '''
     return requests.get(
-        'http://api.web.ecapi.cn/taoke/getTkMaterialItem?apkey={}&pid={}&tbname={}&keyword={}'.format(apkey, pid, tbname, urllib.parse.quote(keyword,safe='')))
+        'http://api.web.ecapi.cn/taoke/getTkMaterialItem?apkey={}&pid={}&tbname={}&keyword={}'.format(apkey, pid,
+                                                                                                      tbname,
+                                                                                                      urllib.parse.quote(
+                                                                                                          keyword,
+                                                                                                          safe='')))
+
 
 def tb_beian():
     '''
@@ -85,10 +92,17 @@ def order_thread():
     每3分钟跑一次淘客订单接口,更新本地db的状态并结算金额.
     :return:
     '''
-    return requests.get(
-        'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}'.format(apkey,
-                                                                                                                '2020-10-15+18:18:22',''))
+    now = time.strftime("%Y-%m-%d+%H:%M:%S", time.localtime())
+    before = (datetime.datetime.now() - datetime.timedelta(minutes=20)).strftime("%Y-%m-%d+%H:%M:%S")
 
+    order_response = requests.get('http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}&page_size=100'.format(apkey,now,before,tbname))
+    order_json = order_response.json()
+    if order_json['code']==200:
+        list_ = order_json['data']['list']
+        for item in list_:
+            pass
+
+    print()
 
 
 class TextResult:
@@ -112,9 +126,12 @@ class TextResult:
             else:
                 self.shop_type = '淘宝'
             self.item_id = response_json['data']['item_id']
-            self.coupon_start_time = response_json['data']['coupon_start_time'] if response_json['data'].__contains__('coupon_start_time') else ''
-            self.coupon_end_time = response_json['data']['coupon_end_time'] if response_json['data'].__contains__('coupon_end_time') else ''
-            self.has_coupon = response_json['data']['has_coupon'] if response_json['data'].__contains__('has_coupon') else ''
+            self.coupon_start_time = response_json['data']['coupon_start_time'] if response_json['data'].__contains__(
+                'coupon_start_time') else ''
+            self.coupon_end_time = response_json['data']['coupon_end_time'] if response_json['data'].__contains__(
+                'coupon_end_time') else ''
+            self.has_coupon = response_json['data']['has_coupon'] if response_json['data'].__contains__(
+                'has_coupon') else ''
             self.ori_price = float(response_json['data']['item_info']['zk_final_price'])
             self.max_commission_rate = float(response_json['data']['max_commission_rate'])
             if self.has_coupon:
@@ -126,8 +143,9 @@ class TextResult:
             self.mykoulin = response_json['data']['tpwd_simple']
             self.tar_price = round(self.ori_price - self.quanzhi, 2)
             self.final_price = round(self.tar_price - self.fanxian, 2)
-            #todo 此处的前端详情页要接收淘口令去走接口拿同样的数据显示在页面.因为不知道如何把json对象包在链接里,后期优化建议是用户查询数据后存在数据库,详情页直接取数据库不走云商接口.
-            self.url = details_url +str(self.item_id)
+            # todo 此处的前端详情页要接收淘口令去走接口拿同样的数据显示在页面.因为不知道如何把json对象包在链接里,后期优化建议是用户查询数据后存在数据库,详情页直接取数据库不走云商接口.
+            self.url = details_url + str(self.item_id) + '&username=' + str(self.username)
+
     def handle_to_str(self):
         '''
         因为发现在用户页复制如下口令,无法生效.但是单独复制口令是可以的.所以放弃改方案.用网页.
@@ -156,7 +174,6 @@ class TextResult:
         return item
 
 
-
 class RecommendItem:
     def __init__(self, item):
         self.title = item['title']
@@ -182,12 +199,14 @@ class RecommendItem:
             del item["_sa_instance_state"]
         return item
 
+
 class RecommendResult:
     '''
     商品详情页的更多推荐
     苹果12钢化水凝膜苹果
 1.5m加长2米3米iPhone6数据线6s苹果5s手机7Plus充电线器7P8X超长3m快充Xs原裝正品ipad
     '''
+
     def __init__(self, keyword):
         response = maybe_u_like_by_keyword(keyword)
         response_json = response.json()
@@ -200,7 +219,6 @@ class RecommendResult:
                     results.append(recommend_item.to_json())
         self.results = results
 
-
     def to_json(self):
         """将实例对象转化为json"""
         item = self.__dict__
@@ -210,6 +228,9 @@ class RecommendResult:
 
 
 if __name__ == '__main__':
+    hh = (1,2)
+    print()
+    order_thread()
     share_url = '哈哈￥QykNcCn5zZh￥'
     share_url = '苹果12钢化水凝膜苹果X/xr/xs/全屏覆盖iphone7/8/plus偷窥全包边iphone11pro max磨砂纳米手机软膜抗蓝光max'
     print((share_url[0:5]))
@@ -223,4 +244,3 @@ if __name__ == '__main__':
     # response = order_thread()
     response_json = response.json()
     print(response.json())
-

@@ -19,6 +19,7 @@ app.config['SQLALCHEMY_ECHO'] = True
 # 注册数据库连接
 db = SQLAlchemy(app)
 
+
 class Msg(db.Model):
     __tablename = 'msg'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -42,6 +43,8 @@ class Msg(db.Model):
     tar_price = db.Column(db.String(256), nullable=True)
     final_price = db.Column(db.String(256), nullable=True)
     url = db.Column(db.String(256), nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
 class User(db.Model):
@@ -52,9 +55,9 @@ class User(db.Model):
     __tablename = 'user'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(256), nullable=True)
-    dai_tixain = db.Column(db.String(256), nullable=True)
-    ke_tixain = db.Column(db.String(256), nullable=True)
-    yi_tixain = db.Column(db.String(256), nullable=True)
+    dai_tixian = db.Column(db.String(256), nullable=True)
+    ke_tixian = db.Column(db.String(256), nullable=True)
+    yi_tixian = db.Column(db.String(256), nullable=True)
     dai_shenhe = db.Column(db.String(256), nullable=True)
     leiji_shouru = db.Column(db.String(256), nullable=True)
     xuyao_tuikuan = db.Column(db.String(256), nullable=True)
@@ -86,13 +89,32 @@ class UserMoneyRecord(db.Model):
     __tablename = 'user_money_record'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(256), nullable=True)
-    dai_tixain = db.Column(db.String(256), nullable=True)
-    ke_tixain = db.Column(db.String(256), nullable=True)
-    yi_tixain = db.Column(db.String(256), nullable=True)
+    dai_tixian = db.Column(db.String(256), nullable=True)
+    ke_tixian = db.Column(db.String(256), nullable=True)
+    yi_tixian = db.Column(db.String(256), nullable=True)
     dai_shenhe = db.Column(db.String(256), nullable=True)
     leiji_shouru = db.Column(db.String(256), nullable=True)
     xuyao_tuikuan = db.Column(db.String(256), nullable=True)
     trade_parent_id = db.Column(db.String(256), nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+
+class CopyTwdRecord(db.Model):
+    '''
+    用户进入详情页复制淘口令的话,就记录于此方便追踪订单定位.(不能靠消息是因为用户可以直接搜索下单,未发送msg)
+    '''
+    __tablename = 'copy_twd_record'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    username = db.Column(db.String(256), nullable=True)
+    item_id = db.Column(db.String(256), nullable=True)
     create_time = db.Column(db.DateTime, default=datetime.datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -115,7 +137,7 @@ class Order(db.Model):
 
 
     (ps:不同等级的返利比例不同.随等级增加而升高.)
-
+00
     --用户进入网页时,拿到用户openid时就增加一条用户表.
 
     订单线程每3分钟取一次联盟订单.根据订单状态情况完成以下逻辑:
@@ -125,7 +147,7 @@ class Order(db.Model):
 
     已付款：指订单已付款，但还未确认收货
         增加:一条订单记录
-        更新:用户的dai_tixain += actual_fanli
+        更新:用户的dai_tixian += actual_fanli
     已收货：指订单已确认收货，但商家佣金未支付
     已结算：指订单已确认收货，且商家佣金已支付成功
     已失效：指订单关闭/订单佣金小于0.01元，订单关闭主要有：1）买家超时未付款； 2）买家付款前，买家/卖家取消了订单；3）订单付款后发起售中退款成功；3：订单结算，12：订单付款， 13：订单失效，14：订单成功
@@ -134,6 +156,7 @@ class Order(db.Model):
     __tablename = 'order'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(256), nullable=True)
+    item_id = db.Column(db.String(256), nullable=True)
     pic_url = db.Column(db.String(256), nullable=True)
     shop_type = db.Column(db.String(256), nullable=True)
     item_title = db.Column(db.String(256), nullable=True)
@@ -141,7 +164,9 @@ class Order(db.Model):
     order_status = db.Column(db.String(256), nullable=True)
     sys_status = db.Column(db.String(256), nullable=True)
     pay_price = db.Column(db.String(256), nullable=True)
+    actual_pre_fanli = db.Column(db.String(256), nullable=True)
     actual_fanli = db.Column(db.String(256), nullable=True)
+    trade_parent_id = db.Column(db.String(256), nullable=True)
     response_text = db.Column(db.Text(), nullable=True)
     create_time = db.Column(db.DateTime, default=datetime.datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
@@ -152,6 +177,65 @@ class Order(db.Model):
         if "_sa_instance_state" in item:
             del item["_sa_instance_state"]
         return item
+
+# 轮询新订单
+def tb_order_job():
+    now = time.strftime("%Y-%m-%d+%H:%M:%S", time.localtime())
+    before = (datetime.datetime.now() - datetime.timedelta(minutes=20)).strftime("%Y-%m-%d+%H:%M:%S")
+    # before = '2021-03-03+08:00:00'
+    # now = '2021-03-03+10:00:00'
+
+    order_response = requests.get(
+        'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}&page_size=100'.format(
+            apkey, now, before, tbname))
+    order_json = order_response.json()
+    if order_json['code'] == 200:
+        list_ = order_json['data']['list']
+        for item in list_:
+            # 判断是否存在于订单表.不存在就插入订单表
+            trade_parent_id__firstOrder = Order.query.filter_by(trade_parent_id=item['trade_parent_id']).first()
+            if trade_parent_id__firstOrder:
+                print(item['trade_parent_id'], 'already in db.')
+            else:
+                # 找出这个订单属于谁.默认给离付款时间最近发送过该itemid的人
+                first = CopyTwdRecord.query.filter_by(item_id=item['item_id']).order_by(
+                    CopyTwdRecord.create_time.desc()).first()
+                if first:
+                    order = Order(username=first.username,
+                                  item_id=item['item_id'],
+                                  pic_url=item['item_img'],
+                                  shop_type=item['order_type'],
+                                  item_title=item['item_title'],
+                                  paid_time=item['tk_paid_time'],
+                                  order_status=item['tk_status'],
+                                  sys_status=item['tk_status'],
+                                  pay_price=item['alipay_total_price'],
+                                  actual_pre_fanli=item['pub_share_pre_fee'],
+                                  actual_fanli=item['pub_share_fee'],
+                                  trade_parent_id=item['trade_parent_id'],
+                                  response_text=str(item))
+                else:
+                    order = Order(item_id=item['item_id'],
+                                  pic_url=item['item_img'],
+                                  shop_type=item['order_type'],
+                                  item_title=item['item_title'],
+                                  paid_time=item['tk_paid_time'],
+                                  order_status=item['tk_status'],
+                                  sys_status=item['tk_status'],
+                                  pay_price=item['alipay_total_price'],
+                                  actual_pre_fanli=item['pub_share_pre_fee'],
+                                  actual_fanli=item['pub_share_fee'],
+                                  trade_parent_id=item['trade_parent_id'],
+                                  response_text=str(item))
+                db.session.add(order)
+                db.session.commit()
+                # 新增了订单,就把该用户的待提现金额+=预估金额(金额有改动,就insert到金额的记录表)
+                user = User.query.filter_by(username=first.username).first()
+                user.dai_tixian = float(user.dai_tixian) + float(order.actual_pre_fanli)
+                db.session.commit()
+                UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli, trade_parent_id=item['trade_parent_id'])
+    return None
+
 
 
 class CodeRecord(db.Model):
@@ -305,11 +389,14 @@ def echo():
         wxmsg = WeiXinMsg(request.data)
         respXml = Response[wxmsg.MsgType](wxmsg) if wxmsg.MsgType in Response else ''
         print(respXml)
-        response = make_response(respXml[0])
-        t_result = respXml[1]
-        if t_result:
-            db.session.add(record_msg(t_result))
-            db.session.commit()
+        if isinstance(respXml, tuple):
+            response = make_response(respXml[0])
+            t_result = respXml[1]
+            if t_result:
+                db.session.add(record_msg(t_result))
+                db.session.commit()
+        else:
+            response = make_response(respXml)
         response.content_type = 'application/xml'
         return response
 
@@ -347,27 +434,72 @@ def wx_login_user():
         openid = get_openid(code)
         print(2)
         print(openid)
-        user = User.query.filter_by(username=openid).first()
-        if user:
-            print('old')
-            # 若不是新用户,就查出订单数和提现数
-        else:
-            user = User(username=openid,
-                        dai_tixain=0,
-                        ke_tixain=0,
-                        yi_tixain=0,
-                        dai_shenhe=0,
-                        leiji_shouru=0,
-                        xuyao_tuikuan=0,
-                        order_count=0,
-                        tixian_count=0,
-                        level='',
-                        level_dead_line='',
-                        alipay_name='',
-                        alipay_account='')
-            db.session.add(user)
-            db.session.commit()
+        user = judge_user_exsits(openid)
         return jsonify(user.to_json())
+    return None
+
+
+def judge_user_exsits(openid):
+    user = User.query.filter_by(username=openid).first()
+    if user:
+        print('old')
+        # 若不是新用户,就查出订单数和提现数
+    else:
+        user = User(username=openid,
+                    dai_tixian=0,
+                    ke_tixian=0,
+                    yi_tixian=0,
+                    dai_shenhe=0,
+                    leiji_shouru=0,
+                    xuyao_tuikuan=0,
+                    order_count=0,
+                    tixian_count=0,
+                    level='',
+                    level_dead_line='',
+                    alipay_name='',
+                    alipay_account='')
+        db.session.add(user)
+        db.session.commit()
+    return user
+
+
+@app.route('/wx/copy_twd_record', methods=['GET', 'POST'])
+def copy_twd_record():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        openid = req_data['openid']
+        # 复制淘口令的时候,若用户不在库里,就新建用户
+        judge_user_exsits(openid)
+        item_id = req_data['item_id']
+        copy_twd = CopyTwdRecord(username=openid, item_id=item_id)
+        db.session.add(copy_twd)
+        db.session.commit()
+    return None\
+
+
+@app.route('/wx/getOrders', methods=['GET', 'POST'])
+def getOrders():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        openid = req_data['openid']
+        orders = Order.query.filter_by(username=openid).all()
+        list_result = []
+        for order in orders:
+            list_result.append(order.to_json())
+        return {'results': list_result}
+    return None
+
+
+@app.route('/wx/getTixians', methods=['GET', 'POST'])
+def getTixians():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        openid = req_data['openid']
+        tixians = TixianRecord.query.filter_by(username=openid).all()
+        list_result = []
+        for tixian in tixians:
+            list_result.append(tixian.to_json())
+        return {'results': list_result}
     return None
 
 
@@ -402,10 +534,6 @@ def tb_details_many():
     return None
 
 
-def tb_order_job():
-    pass
-
-
 def tb_order_job2():
     # todo 买云商的v1会员,然后走订单接口.(注意防止漏掉或者多查),防漏就获取近5分钟的订单,多查就定义个全局set.
     results = [{}]
@@ -426,6 +554,8 @@ def tb_order_task():
 
 
 if __name__ == '__main__':
+    # tb_order_job()
+    # first = Msg.query.filter_by(item_id='571900197140').order_by(Msg.create_time.desc()).first()
     # user = User.query.filter_by(username='111').first()
     # user_serialize = user.serialize()
     # print()
