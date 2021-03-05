@@ -126,6 +126,28 @@ class CopyTwdRecord(db.Model):
         return item
 
 
+# class TBcategary(db.Model):
+#     '''
+#     用户进入详情页复制淘口令的话,就记录于此方便追踪订单定位.(不能靠消息是因为用户可以直接搜索下单,未发送msg)
+#     '''
+#     __tablename = 'tb_categary'
+#     cid = db.Column(db.String(64), primary_key=True)
+#     parent_cid = db.Column(db.String(64), nullable=True)
+#     name = db.Column(db.String(256), nullable=True)
+#     create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+#     update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+#
+#     def to_json(self):
+#         """将实例对象转化为json"""
+#         item = self.__dict__
+#         if "_sa_instance_state" in item:
+#             del item["_sa_instance_state"]
+#         return item
+
+tk_status_map = {'12': '付款', '13': '关闭', '14': '确认收货', '3': '结算成功'}
+wx_status_map = {'12': '待提现', '13': '关闭', '14': '可提现', '3': '结算成功'}
+
+
 class Order(db.Model):
     '''
     增加等级机制.增加赞助功能.(接微信支付.连续交易30天可申请给用户发红包权限)(增加等级介绍页面)
@@ -178,12 +200,13 @@ class Order(db.Model):
             del item["_sa_instance_state"]
         return item
 
+
 # 轮询新订单
-def tb_order_job():
+def tb_new_order_job():
     now = time.strftime("%Y-%m-%d+%H:%M:%S", time.localtime())
     before = (datetime.datetime.now() - datetime.timedelta(minutes=20)).strftime("%Y-%m-%d+%H:%M:%S")
-    # before = '2021-03-03+08:00:00'
-    # now = '2021-03-03+10:00:00'
+    # before = '2021-03-03+08:44:27'
+    # now = '2021-03-03+08:45:27'
 
     order_response = requests.get(
         'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}&page_size=100'.format(
@@ -207,8 +230,8 @@ def tb_order_job():
                                   shop_type=item['order_type'],
                                   item_title=item['item_title'],
                                   paid_time=item['tk_paid_time'],
-                                  order_status='已付款' if item['tk_status']==12 else item['tk_status'],
-                                  sys_status='已付款' if item['tk_status']==12 else item['tk_status'],
+                                  order_status='已付款' if item['tk_status'] == 12 else item['tk_status'],
+                                  sys_status='待提现' if item['tk_status'] == 12 else item['tk_status'],
                                   pay_price=item['alipay_total_price'],
                                   actual_pre_fanli=item['pub_share_pre_fee'],
                                   actual_fanli=item['pub_share_fee'],
@@ -239,7 +262,6 @@ def tb_order_job():
                 db.session.commit()
 
 
-
 class CodeRecord(db.Model):
     __tablename = 'code_record'
     code = db.Column(db.String(256), primary_key=True)
@@ -266,7 +288,10 @@ class TixianRecord(db.Model):
     money = db.Column(db.String(256), nullable=True)
     fafang_status = db.Column(db.String(256), nullable=True)
     fafang_time = db.Column(db.String(256), nullable=True)
-    in_out = db.Column(db.String(256), nullable=True)
+    alipay_orderid = db.Column(db.String(256), nullable=True)
+    orderid = db.Column(db.String(256), nullable=True)
+    thirdorder = db.Column(db.String(256), nullable=True)
+    reason = db.Column(db.String(256), nullable=True)
     create_time = db.Column(db.DateTime, default=datetime.datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -281,77 +306,6 @@ class TixianRecord(db.Model):
 db.create_all()
 
 
-#
-#
-# class LoginForm(FlaskForm):
-#     username = StringField('账户名：', validators=[DataRequired(), Length(1, 30)])
-#     password = PasswordField('密码：', validators=[DataRequired(), Length(1, 64)])
-#     remember_me = BooleanField('记住密码', validators=[Optional()])
-#
-#
-# login_manager_local = login_manager.LoginManager()
-# login_manager_local.init_app(app)
-# login_manager_local.session_protection = 'strong'
-# login_manager_local.login_view = 'login'
-#
-#
-# @app.route('/login', methods=['GET', 'POST'])
-# def login():
-#     print(1)
-#     if request.method == 'GET':
-#         print(2)
-#         form = LoginForm()
-#         return render_template('login.html', form=form)
-#     else:
-#         print(3)
-#         form = LoginForm(request.form)
-#         if form.validate():
-#             username = request.form['name']
-#             pwd = request.form['pwd']
-#             user = User.query_by_username(username)
-#
-#             if user and user.verify_password(pwd):
-#                 login_user(user)
-#                 return 'login ok'
-#         else:
-#             print(form.errors)
-#         return render_template('login.html', form=form)
-#
-# @app.route("/testWXLoginOrRegister",methods=["GET"])
-# def test_wx_login_or_register():
-#     """
-#     测试微信登陆注册
-#     :return:
-#     """
-#     # 前端获取到的临时授权码
-#     code = request.args.get("code")
-#     # 标识web端还是app端登陆或注册
-#     flag = request.args.get("flag")
-#
-#     # 参数错误
-#     if code is None or flag is None:
-#         return "参数错误"
-#
-#     # 获取微信用户授权码
-#     access_code = get_access_code(code=code, flag=flag)
-#     if access_code is None:
-#         return "获取微信授权失败"
-#
-#     # 获取微信用户信息
-#     wx_user_info = get_wx_user_info(access_data=access_code)
-#     if wx_user_info is None:
-#         return "获取微信授权失败"
-#
-#     # 验证微信用户信息本平台是否有，
-#     data = login_or_register(wx_user_info=wx_user_info)
-#     if data is None:
-#         return "登陆失败"
-#     return data
-#
-# @app.route('/')
-# @login_required
-# def index():
-#     return "Hello, World!"
 
 def record_msg(t_result):
     if t_result.code == 200:
@@ -390,7 +344,6 @@ def echo():
     else:
         wxmsg = WeiXinMsg(request.data)
         respXml = Response[wxmsg.MsgType](wxmsg) if wxmsg.MsgType in Response else ''
-        print(respXml)
         if isinstance(respXml, tuple):
             response = make_response(respXml[0])
             t_result = respXml[1]
@@ -431,11 +384,7 @@ def wx_login_user():
     req_data = request.get_json(silent=True)
     if req_data:
         code = req_data['code']
-        print(1)
-        print(code)
         openid = get_openid(code)
-        print(2)
-        print(openid)
         user = judge_user_exsits(openid)
         return jsonify(user.to_json())
     return None
@@ -476,7 +425,88 @@ def copy_twd_record():
         copy_twd = CopyTwdRecord(username=openid, item_id=item_id)
         db.session.add(copy_twd)
         db.session.commit()
-    return None\
+    return None
+
+
+def trans_2_zfb(openid, jine, name, account):
+    millis = int(round(time.time() * 1000))
+    response = trans_zfb(jine, name, account, millis)
+    response_json = response.json()
+    print(response_json)
+    if response_json['code'] == 200:
+        return millis
+    return None
+
+
+@app.route('/result', methods=['GET', 'POST'])
+def result():
+    thirdorder = request.form.get('thirdorder')
+    record = TixianRecord.query.filter_by(thirdorder=thirdorder).first()
+    openid = record.username
+    jine = record.money
+    event = request.form.get('event')
+    if 'SUC' in event:
+        fafang_status = '已到账'
+    else:
+        fafang_status = '失败'
+        # 失败就把用户的钱再加回来
+        # 修改用户的可提现金额
+        user = User.query.filter_by(username=openid).first()
+        user.ke_tixian = float(user.ke_tixian) + float(jine)
+        db.session.commit()
+        # 金额有变化,就插到金额变化表
+        record = UserMoneyRecord(username=openid, ke_tixian=float(jine))
+        db.session.add(record)
+        db.session.commit()
+
+    # 无论成功失败都要将结果更新到提现记录表
+    orderid = request.form.get('orderid')
+    alipay_orderid = request.form.get('alipay_orderid')
+    reason = request.form.get('reason')
+    record = TixianRecord.query.filter_by(thirdorder=thirdorder).first()
+    record.fafang_status = fafang_status
+    record.fafang_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    record.orderid = orderid
+    record.alipay_orderid = alipay_orderid
+    record.reason = reason
+    db.session.commit()
+    return 'success'
+
+
+@app.route('/wx/tixian', methods=['GET', 'POST'])
+def tixian():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        openid = req_data['openid']
+        jine = float(req_data['jine'])
+        name = req_data['name']
+        account = req_data['account']
+        user = User.query.filter_by(username=openid).first()
+        # 用户提现的时候,输入的支付宝信息保存一下
+        user.alipay_name = name
+        user.alipay_account = account
+        db.session.commit()
+        if float(user.ke_tixian) < jine:
+            return None
+        else:
+            # 给指定支付宝转账
+            thirdorder = trans_2_zfb(openid, jine, name, account)
+            if thirdorder is not None:
+                # 修改用户的可提现金额
+                user = User.query.filter_by(username=openid).first()
+                user.ke_tixian = float(user.ke_tixian) - float(jine)
+                user.yi_tixian = float(user.yi_tixian) + float(jine)
+                db.session.commit()
+                # 金额有变化,就插到金额变化表
+                record = UserMoneyRecord(username=openid, ke_tixian=-float(jine), yi_tixian=float(jine))
+                db.session.add(record)
+                db.session.commit()
+                # 增加提现记录
+                tixian_record = TixianRecord(username=openid, money=jine, fafang_status='已提交', thirdorder=thirdorder)
+                db.session.add(tixian_record)
+                db.session.commit()
+                return {'tixian': 'success'}
+    return None
 
 
 @app.route('/wx/getOrders', methods=['GET', 'POST'])
@@ -514,7 +544,6 @@ def get_openid(code):
         t_result = requests.get(
             'https://api.weixin.qq.com/sns/oauth2/access_token?appid=' + appid + '&secret=' + secret + '&code=' + code + '&grant_type=authorization_code')
         result_json = t_result.json()
-        print(result_json)
         openid = result_json['openid']
         code_record = CodeRecord(code=code, openid=openid)
         db.session.add(code_record)
@@ -536,27 +565,126 @@ def tb_details_many():
     return None
 
 
-def tb_order_job2():
-    # todo 买云商的v1会员,然后走订单接口.(注意防止漏掉或者多查),防漏就获取近5分钟的订单,多查就定义个全局set.
-    results = [{}]
-    orders = Order.query.all()
+def tb_order_status_job():
+    """
+    查order表状态为已付款的订单,按paid_time智能排序.
+    :return:
+    """
+    orders = Order.query.filter_by(order_status='已付款').order_by(Order.paid_time.asc()).all()
+    list = []
+    trade_id_status = {}
+    for order in orders:
+        trade_id_status[order.trade_parent_id] = order.order_status
+        list.append(datetime.datetime.strptime(order.paid_time, '%Y-%m-%d %H:%M:%S'))
+    final_list = group_time(list)
+    for time_group in final_list:
+        now = time_group[1]
+        before = time_group[0]
+        order_response = requests.get(
+            'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}&page_size=100'.format(
+                apkey, now, before, tbname))
+        order_json = order_response.json()
+        if order_json['code'] == 200:
+            list_ = order_json['data']['list']
+            for item in list_:
+                # 判断该订单状态是否为12(已付款),不是就更新
+                if item['tk_status'] != 12:
+                    _order = Order.query.filter_by(trade_parent_id=item['trade_parent_id']).first()
+                    _status = tk_status_map[str(item['tk_status'])]
+                    _wx_status = wx_status_map[str(item['tk_status'])]
+                    _order.order_status = _status
+                    _order.sys_status = _wx_status
+                    db.session.commit()
+                    if item['tk_status'] == 14:
+                        # (确认收货)后把金额加到可提现中
+                        # 修改用户的可提现金额和待提现金额
+                        user = User.query.filter_by(username=_order.username).first()
+                        user.dai_tixian = float(user.dai_tixian) - float(_order.actual_pre_fanli)
+                        user.ke_tixian = float(user.ke_tixian) + float(_order.actual_pre_fanli)
+                        db.session.commit()
+                        # 金额有变化,就插到金额变化表
+                        record = UserMoneyRecord(username=_order.username, ke_tixian=float(_order.actual_pre_fanli), dai_tixian=-float(_order.actual_pre_fanli), trade_parent_id=_order.trade_parent_id)
+                        db.session.add(record)
+                        db.session.commit()
+                    if item['tk_status'] == 3:
+                        # (订单关闭)了的话,应追溯该订单号的所有金额来往,还原回去.
+                        records = UserMoneyRecord.query.filter_by(trade_parent_id=_order.trade_parent_id).all()
+                        for record in records:
+                            user = User.query.filter_by(username=_order.username).first()
+                            if record.dai_tixian is not None:
+                                user.dai_tixian = float(user.dai_tixian) - float(record.dai_tixian)
+                            if record.ke_tixian is not None:
+                                user.ke_tixian = float(user.ke_tixian) - float(record.ke_tixian)
+                            db.session.commit()
+
+
+
+
+def group_time(list):
+    new_list = []
+    for i in list:
+        if i.strftime('%Y-%m-%d %H:%M:%S') in time_2_str_list(new_list):
+            continue
+        _max = i + datetime.timedelta(minutes=178)
+        _list = []
+        for j in list:
+            if j.strftime('%Y-%m-%d %H:%M:%S') in time_2_str_list(new_list):
+                continue
+            else:
+                if j < _max:
+                    _list.append(j)
+                else:
+                    break
+        new_list.append(_list)
+    # 此时new_list已经分好组了,再取每个组的第一个值和最后一个值.
+    final_list = []
+    for zu in new_list:
+        _t_list = [(zu[0] - datetime.timedelta(minutes=1)).strftime('%Y-%m-%d+%H:%M:%S'),
+                   zu[-1].strftime('%Y-%m-%d+%H:%M:%S')]
+        final_list.append(_t_list)
+    return final_list
+
+
+def time_2_str_list(new_list):
+    str_time_list = []
+    for x in new_list:
+        for y in x:
+            stry = y.strftime('%Y-%m-%d %H:%M:%S')
+            str_time_list.append(stry)
+    return str_time_list
 
 
 def tb_order_task():
-    print("task start " + str(os.getpid()))
+    print("tb_order_task start " + str(os.getpid()))
     scheduler = APScheduler()
     scheduler.init_app(app)
     # 淘宝联盟查询订单的定时任务，每隔60s执行1次
-    scheduler.add_job(func=tb_order_job, trigger='interval', seconds=60, id='tb_order_task')
+    scheduler.add_job(func=tb_new_order_job, trigger='interval', seconds=60, id='tb_order_task')
+    scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=300, id='tb_upd_order_status_task')
     scheduler.start()
 
 
+
+# def handle_categary():
+#     category = getTbCategory()
+#     category_json = category.json()
+#     category_list = []
+#     for _i in category_json['data']:
+#         t = TBcategary(cid=_i['cid'], parent_cid=_i['parent_cid'], name=_i['name'])
+#         category_list.append(t)
+
+
 # 写在main里面，IIS不会运行
+
+
+
 tb_order_task()
 
-
 if __name__ == '__main__':
-    # tb_order_job()
+    # record = UserMoneyRecord(username='oo5JJ5mg3bd1GV1MP0i2hyyHUXtY', ke_tixian=-float('0.1'))
+    # db.session.add(record)
+    # db.session.commit()
+    # trans_2_zfb('0.1','韩旭','18627783779')
     # first = Msg.query.filter_by(item_id='571900197140').order_by(Msg.create_time.desc()).first()
     # user = User.query.filter_by(username='111').first()
     # user_serialize = user.serialize()

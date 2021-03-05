@@ -65,6 +65,28 @@ def trans_tpwd_to_itemid(tpwd):
                                                                                                  tbname))
 
 
+def trans_zfb(money, realname, alipay, millis):
+    """
+    支付宝代付接口
+    :param money:
+    :param realname:
+    :param alipay:
+    :return:
+    """
+
+    return requests.get('http://api.web.ecapi.cn/platform/paymentToAlipay?apkey={}&alipay={}&realname={}&money={}&beizhu=97go返现&thirdorder={}'.format(apkey, alipay, realname, money, str(millis)))
+
+
+def getTbCategory(cid=0):
+    """
+    淘宝分类接口
+    :param cid:
+    :return:
+    """
+    return requests.get(
+        'http://api.web.ecapi.cn/platform/getTbCategory?apkey={}&cid={}'.format(apkey, cid))
+
+
 def maybe_u_like_by_keyword(keyword):
     '''
     关键词搜索同类商品作为详情页推荐列表,点击任何一个推荐的商品,就根据商品id去获得专属淘口令供用户购买.
@@ -72,7 +94,7 @@ def maybe_u_like_by_keyword(keyword):
     :return:http://api.web.ecapi.cn/taoke/getTkMaterialItem?apkey=登录会员中心查看&pid=mm_123456_456789_789132&tbname=xxxxx
     '''
     return requests.get(
-        'http://api.web.ecapi.cn/taoke/getTkMaterialItem?apkey={}&pid={}&tbname={}&keyword={}'.format(apkey, pid,
+        'http://api.web.ecapi.cn/taoke/getTkMaterialItem?sort=tk_total_sales_des&pagesize=100&apkey={}&pid={}&tbname={}&keyword={}'.format(apkey, pid,
                                                                                                       tbname,
                                                                                                       urllib.parse.quote(
                                                                                                           keyword,
@@ -228,7 +250,8 @@ class RecommendResult:
 
 
 if __name__ == '__main__':
-    hh = (1,2)
+    keyword = maybe_u_like_by_keyword('')
+    json = keyword.json()
     print()
     order_thread()
     share_url = '哈哈￥QykNcCn5zZh￥'
