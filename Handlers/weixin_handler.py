@@ -13,17 +13,18 @@ def onText(wxmsg):
     '''收到文本
     Content	文本消息内容'''
     inTxt = wxmsg.Content
-    if 'tb.cn' in inTxt.lower():
+    if 'tb.cn' in inTxt.lower() or inTxt[0].isdigit():
         t_result = TextResult(share_url=inTxt, username=wxmsg.ToUserName)
         if t_result.code != 200:
-            return wxmsg.resp_text('该商品没有返利，换一个试试吧'), t_result
+            return wxmsg.resp_text('该商品没有返利，换一个试试吧~'), t_result
         return wxmsg.resp_link(t_result), t_result
     else:
-        return wxmsg.resp_text(u'97go目前仅支持淘口令返利.'), None
+        # return wxmsg.resp_text(u'97go目前仅支持淘口令返利.'), None
+        return wxmsg.resp_text(u'官人,请分享商品链接给我哟~'), None
 
 #9
-appid = "wx0212875e85602959"
-secret = "34f9bc08889f56fd0408db6c0c8bbb79"
+appid = "wx0212875e8560295"
+secret = "34f9bc08889f56fd0408db6c0c8bbb7"
 def create_menu():
 
     url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=" + appid + "&secret=" + secret
@@ -51,7 +52,7 @@ def create_menu():
                     {
                         "type": "view",
                         "name": "淘宝天猫返利",
-                        "url": "http://www.soso.com/"
+                        "url": "https://mp.weixin.qq.com/s/ho8-QJJCRwfZX2-EnYUvsQ"
                     },
                     {
                         "type": "view",
@@ -76,7 +77,7 @@ def create_menu():
                 "sub_button": [
                     {
                         "type": "view",
-                        "name": "我的红包",
+                        "name": "个人中心",
                         "url": "https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx0212875e85602959&redirect_uri=http://afanxyz.xyz/pages/mine/mine&response_type=code&scope=snsapi_base&state=1&#wechat_redirect"
                     },
                     {

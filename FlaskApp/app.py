@@ -205,8 +205,8 @@ class Order(db.Model):
 def tb_new_order_job():
     now = time.strftime("%Y-%m-%d+%H:%M:%S", time.localtime())
     before = (datetime.datetime.now() - datetime.timedelta(minutes=20)).strftime("%Y-%m-%d+%H:%M:%S")
-    # before = '2021-03-03+08:44:27'
-    # now = '2021-03-03+08:45:27'
+    # before = '2021-03-05+11:00:27'
+    # now = '2021-03-05+11:03:27'
 
     order_response = requests.get(
         'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}&page_size=100'.format(
@@ -216,13 +216,16 @@ def tb_new_order_job():
         list_ = order_json['data']['list']
         for item in list_:
             # 判断是否存在于订单表.不存在就插入订单表
-            trade_parent_id__firstOrder = Order.query.filter_by(trade_parent_id=item['trade_parent_id']).first()
+            trade_parent_id__firstOrder = Order.query.filter(Order.trade_parent_id == item['trade_parent_id']).first()
+            db.session.commit()
             if trade_parent_id__firstOrder:
                 print(item['trade_parent_id'], 'already in db.')
             else:
+                print(item['trade_parent_id'], 'not in db.')
                 # 找出这个订单属于谁.默认给离付款时间最近发送过该itemid的人
-                first = CopyTwdRecord.query.filter_by(item_id=item['item_id']).order_by(
+                first = CopyTwdRecord.query.filter(CopyTwdRecord.item_id==item['item_id']).order_by(
                     CopyTwdRecord.create_time.desc()).first()
+                db.session.commit()
                 if first:
                     order = Order(username=first.username,
                                   item_id=item['item_id'],
@@ -237,29 +240,19 @@ def tb_new_order_job():
                                   actual_fanli=item['pub_share_fee'],
                                   trade_parent_id=item['trade_parent_id'],
                                   response_text=str(item))
+                    db.session.add(order)
+                    db.session.commit()
+                    # 新增了订单,就把该用户的待提现金额+=预估金额(金额有改动,就insert到金额的记录表)
+                    user = User.query.filter(User.username==first.username).first()
+                    user.dai_tixian = round(float(user.dai_tixian) + float(order.actual_pre_fanli), 2)
+                    db.session.commit()
+                    record = UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli,
+                                             trade_parent_id=item['trade_parent_id'])
+                    db.session.add(record)
+                    db.session.commit()
                 else:
-                    order = Order(item_id=item['item_id'],
-                                  pic_url=item['item_img'],
-                                  shop_type=item['order_type'],
-                                  item_title=item['item_title'],
-                                  paid_time=item['tk_paid_time'],
-                                  order_status=item['tk_status'],
-                                  sys_status=item['tk_status'],
-                                  pay_price=item['alipay_total_price'],
-                                  actual_pre_fanli=item['pub_share_pre_fee'],
-                                  actual_fanli=item['pub_share_fee'],
-                                  trade_parent_id=item['trade_parent_id'],
-                                  response_text=str(item))
-                db.session.add(order)
-                db.session.commit()
-                # 新增了订单,就把该用户的待提现金额+=预估金额(金额有改动,就insert到金额的记录表)
-                user = User.query.filter_by(username=first.username).first()
-                user.dai_tixian = float(user.dai_tixian) + float(order.actual_pre_fanli)
-                db.session.commit()
-                record = UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli,
-                                         trade_parent_id=item['trade_parent_id'])
-                db.session.add(record)
-                db.session.commit()
+                    print('#####there is a new order but cant find tpwd copyer###'+item['trade_parent_id'])
+
 
 
 class CodeRecord(db.Model):
@@ -361,9 +354,10 @@ def tb_details_one():
     req_data = request.get_json(silent=True)
     if req_data:
         itemid = req_data['itemid']
+        print('details_one', itemid)
         t_result = TextResult(itemid=itemid)
         return jsonify(t_result.to_json())
-    return None
+    return ''
 
 
 @app.route('/wx/order_tx_counts', methods=['GET', 'POST'])
@@ -376,7 +370,7 @@ def wx_order_tx_counts():
         result = {'order_count': order_count, 'tixian_count': tixian_count}
         return jsonify(result)
     else:
-        return None
+        return ''
 
 
 @app.route('/wx/login_user', methods=['GET', 'POST'])
@@ -386,8 +380,10 @@ def wx_login_user():
         code = req_data['code']
         openid = get_openid(code)
         user = judge_user_exsits(openid)
+        print(user.to_json())
         return jsonify(user.to_json())
-    return None
+    print('login_user nothing')
+    return ''
 
 
 def judge_user_exsits(openid):
@@ -425,7 +421,8 @@ def copy_twd_record():
         copy_twd = CopyTwdRecord(username=openid, item_id=item_id)
         db.session.add(copy_twd)
         db.session.commit()
-    return None
+        return {'r': '1'}
+    return {'r': '0'}
 
 
 def trans_2_zfb(openid, jine, name, account):
@@ -452,7 +449,7 @@ def result():
         # 失败就把用户的钱再加回来
         # 修改用户的可提现金额
         user = User.query.filter_by(username=openid).first()
-        user.ke_tixian = float(user.ke_tixian) + float(jine)
+        user.ke_tixian = round(float(user.ke_tixian) + float(jine), 2)
         db.session.commit()
         # 金额有变化,就插到金额变化表
         record = UserMoneyRecord(username=openid, ke_tixian=float(jine))
@@ -478,7 +475,10 @@ def tixian():
     req_data = request.get_json(silent=True)
     if req_data:
         openid = req_data['openid']
-        jine = float(req_data['jine'])
+        try:
+            jine = float(req_data['jine'])
+        except Exception as e:
+            return {'tixian': '小鬼,别闹.'}
         name = req_data['name']
         account = req_data['account']
         user = User.query.filter_by(username=openid).first()
@@ -487,15 +487,15 @@ def tixian():
         user.alipay_account = account
         db.session.commit()
         if float(user.ke_tixian) < jine:
-            return None
+            return {'tixian': '可提现余额不足'}
         else:
             # 给指定支付宝转账
             thirdorder = trans_2_zfb(openid, jine, name, account)
             if thirdorder is not None:
                 # 修改用户的可提现金额
                 user = User.query.filter_by(username=openid).first()
-                user.ke_tixian = float(user.ke_tixian) - float(jine)
-                user.yi_tixian = float(user.yi_tixian) + float(jine)
+                user.ke_tixian = round(float(user.ke_tixian) - float(jine), 2)
+                user.yi_tixian = round(float(user.yi_tixian) + float(jine), 2)
                 db.session.commit()
                 # 金额有变化,就插到金额变化表
                 record = UserMoneyRecord(username=openid, ke_tixian=-float(jine), yi_tixian=float(jine))
@@ -505,8 +505,10 @@ def tixian():
                 tixian_record = TixianRecord(username=openid, money=jine, fafang_status='已提交', thirdorder=thirdorder)
                 db.session.add(tixian_record)
                 db.session.commit()
-                return {'tixian': 'success'}
-    return None
+                return {'tixian': '申请成功'}
+            else:
+                return {'tixian': '申请失败'}
+    return ''
 
 
 @app.route('/wx/getOrders', methods=['GET', 'POST'])
@@ -519,7 +521,8 @@ def getOrders():
         for order in orders:
             list_result.append(order.to_json())
         return {'results': list_result}
-    return None
+    print('getOrders nothing')
+    return ''
 
 
 @app.route('/wx/getTixians', methods=['GET', 'POST'])
@@ -532,7 +535,7 @@ def getTixians():
         for tixian in tixians:
             list_result.append(tixian.to_json())
         return {'results': list_result}
-    return None
+    return ''
 
 
 def get_openid(code):
@@ -562,7 +565,13 @@ def tb_details_many():
             keyword = keyword[0:30]
         t_result = RecommendResult(keyword)
         return jsonify(t_result.to_json())
-    return None
+    return ''
+
+
+def find_dif_status_order(list_):
+    trade_ids = []
+    for _t in list_:
+        trade_ids.append(_t['trade_parent_id'])
 
 
 def tb_order_status_job():
@@ -571,6 +580,7 @@ def tb_order_status_job():
     :return:
     """
     orders = Order.query.filter_by(order_status='已付款').order_by(Order.paid_time.asc()).all()
+    db.session.commit()
     list = []
     trade_id_status = {}
     for order in orders:
@@ -586,10 +596,13 @@ def tb_order_status_job():
         order_json = order_response.json()
         if order_json['code'] == 200:
             list_ = order_json['data']['list']
+            #todo 把_list与当前订单状态一致的,直接从_list删除
+            list_ = find_dif_status_order(list_)
             for item in list_:
                 # 判断该订单状态是否为12(已付款),不是就更新
                 if item['tk_status'] != 12:
                     _order = Order.query.filter_by(trade_parent_id=item['trade_parent_id']).first()
+                    db.session.commit()
                     _status = tk_status_map[str(item['tk_status'])]
                     _wx_status = wx_status_map[str(item['tk_status'])]
                     _order.order_status = _status
@@ -599,22 +612,23 @@ def tb_order_status_job():
                         # (确认收货)后把金额加到可提现中
                         # 修改用户的可提现金额和待提现金额
                         user = User.query.filter_by(username=_order.username).first()
-                        user.dai_tixian = float(user.dai_tixian) - float(_order.actual_pre_fanli)
-                        user.ke_tixian = float(user.ke_tixian) + float(_order.actual_pre_fanli)
+                        user.dai_tixian = round(float(user.dai_tixian) - float(_order.actual_pre_fanli), 2)
+                        user.ke_tixian = round(float(user.ke_tixian) + float(_order.actual_pre_fanli), 2)
                         db.session.commit()
                         # 金额有变化,就插到金额变化表
                         record = UserMoneyRecord(username=_order.username, ke_tixian=float(_order.actual_pre_fanli), dai_tixian=-float(_order.actual_pre_fanli), trade_parent_id=_order.trade_parent_id)
                         db.session.add(record)
                         db.session.commit()
-                    if item['tk_status'] == 3:
+                    if item['tk_status'] == 13:
                         # (订单关闭)了的话,应追溯该订单号的所有金额来往,还原回去.
                         records = UserMoneyRecord.query.filter_by(trade_parent_id=_order.trade_parent_id).all()
+                        db.session.commit()
                         for record in records:
                             user = User.query.filter_by(username=_order.username).first()
                             if record.dai_tixian is not None:
-                                user.dai_tixian = float(user.dai_tixian) - float(record.dai_tixian)
+                                user.dai_tixian = round(float(user.dai_tixian) - float(record.dai_tixian), 2)
                             if record.ke_tixian is not None:
-                                user.ke_tixian = float(user.ke_tixian) - float(record.ke_tixian)
+                                user.ke_tixian = round(float(user.ke_tixian) - float(record.ke_tixian), 2)
                             db.session.commit()
 
 
@@ -681,12 +695,7 @@ def tb_order_task():
 tb_order_task()
 
 if __name__ == '__main__':
-    # record = UserMoneyRecord(username='oo5JJ5mg3bd1GV1MP0i2hyyHUXtY', ke_tixian=-float('0.1'))
-    # db.session.add(record)
-    # db.session.commit()
-    # trans_2_zfb('0.1','韩旭','18627783779')
-    # first = Msg.query.filter_by(item_id='571900197140').order_by(Msg.create_time.desc()).first()
-    # user = User.query.filter_by(username='111').first()
-    # user_serialize = user.serialize()
-    # print()
+    # float___ = round(float('1.23') + float('1.11'), 2)
+    # tb_new_order_job()
+    print('app start...')
     app.run(host='0.0.0.0', port=39004)
