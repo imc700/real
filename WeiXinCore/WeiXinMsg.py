@@ -78,7 +78,6 @@ class WeiXinMsg(object):
         print(text_msg)
         return text_msg
 
-    # todo 2021年2月20日23:05:29抽空在此处增加一个回复链接消息的方法
     def resp_link(self, t_result):
         template3 = u'''<xml>
 <ToUserName><![CDATA[{}]]></ToUserName>

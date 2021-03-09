@@ -146,6 +146,8 @@ class CopyTwdRecord(db.Model):
 #         return item
 
 tk_status_map = {'12': '付款', '13': '关闭', '14': '确认收货', '3': '结算成功'}
+jd_status_map = {'16': '已付款', '17': '已完成', '18': '已结算', '15': '待付款'}
+jd_sys_status_map = {'16': '待提现', '17': '可提现', '18': '已结算', '15': '待付款'}
 wx_status_map = {'12': '待提现', '13': '关闭', '14': '可提现', '3': '结算成功'}
 
 
@@ -256,8 +258,8 @@ def tb_new_order_job():
                 else:
                     print('#####there is a new order but cant find tpwd copyer###'+item['trade_parent_id'])
 def jd_new_order_job():
-    # now = time.strftime("%Y%m%d%H%M", time.localtime())
-    now = '202103091544'
+    now = time.strftime("%Y%m%d%H%M", time.localtime())
+    # now = '2021030915'
     order_response = requests.get(
         'http://api.web.ecapi.cn/jingdong/getJdUnionOrders?apkey={}&time={}&type=1&pageNo=1&pageSize=100&key_id={}'.format(
             apkey, now, key_id))
@@ -285,8 +287,8 @@ def jd_new_order_job():
                                       order_from='jd',
                                       item_title=item['skuName'],
                                       paid_time='',
-                                      order_status='已付款' if item['validCode'] == 16 else item['validCode'],
-                                      sys_status='待提现' if item['validCode'] == 16 else item['validCode'],
+                                      order_status=jd_status_map[item['validCode']],
+                                      sys_status=jd_sys_status_map[item['validCode']],
                                       pay_price=item['estimateCosPrice'],
                                       actual_pre_fanli=item['estimateFee'],
                                       actual_fanli=item['actualFee'],
@@ -657,7 +659,9 @@ def find_dif_status_order(list_):
     db.session.commit()
     return new_items
 
-
+def any_timestamp_to_strtime(timestamp, strformat):
+    local_str_time = datetime.datetime.fromtimestamp(timestamp / 1000.0).strftime(strformat)
+    return local_str_time
 
 def tb_order_status_job():
     """
@@ -717,6 +721,73 @@ def tb_order_status_job():
                             db.session.commit()
 
 
+def find_jd_dif_order_status(items, trade_id_status):
+    new_items = []
+    for item in items:
+        if trade_id_status[item['orderTime']] != jd_status_map[item['validCode']]:
+            new_items.append(item)
+    return new_items
+
+
+def jd_order_status_job():
+    """
+    查order表状态为已付款的订单,按paid_time智能排序.
+    :return:
+    """
+    orders = Order.query.filter_by(order_status='已付款', order_from='jd').order_by(Order.paid_time.asc()).all()
+    db.session.commit()
+    list = []
+    trade_id_status = {}
+    for order in orders:
+        trade_id_status[order.trade_parent_id] = order.order_status
+        list.append(any_timestamp_to_strtime(order.trade_parent_id, '%Y%m%d%H'))
+    final_list = set(list)
+    for now in final_list:
+        order_response = requests.get(
+            'http://api.web.ecapi.cn/jingdong/getJdUnionOrders?apkey={}&time={}&type=1&pageNo=1&pageSize=100&key_id={}'.format(
+                apkey, now, key_id))
+        order_json = order_response.json()
+        if order_json['code'] == 200:
+            list = order_json['data']['list']
+            for list_ in list:
+                # 选出与库里状态不同的进行接下来的处理
+                dif_status_items = find_jd_dif_order_status(list_['skuList'], trade_id_status)
+                for item in dif_status_items:
+                    # 判断该订单状态是否为12(已付款),不是就更新
+                    # todo jd的订单状态查询待编写
+                    if item['validCode'] != 16:
+                        _order = Order.query.filter_by(trade_parent_id=item['trade_parent_id']).first()
+                        db.session.commit()
+                        _status = tk_status_map[str(item['tk_status'])]
+                        _wx_status = wx_status_map[str(item['tk_status'])]
+                        _order.order_status = _status
+                        _order.sys_status = _wx_status
+                        db.session.commit()
+                        if item['validCode'] == 17:
+                            # (确认收货)后把金额加到可提现中
+                            # 修改用户的可提现金额和待提现金额
+                            user = User.query.filter_by(username=_order.username).first()
+                            user.dai_tixian = round(float(user.dai_tixian) - float(_order.actual_pre_fanli), 2)
+                            user.ke_tixian = round(float(user.ke_tixian) + float(_order.actual_pre_fanli), 2)
+                            db.session.commit()
+                            # 金额有变化,就插到金额变化表
+                            record = UserMoneyRecord(username=_order.username, ke_tixian=float(_order.actual_pre_fanli),
+                                                     dai_tixian=-float(_order.actual_pre_fanli),
+                                                     trade_parent_id=_order.trade_parent_id)
+                            db.session.add(record)
+                            db.session.commit()
+                        if item['validCode'] == 13:
+                            # (订单关闭)了的话,应追溯该订单号的所有金额来往,还原回去.
+                            records = UserMoneyRecord.query.filter_by(trade_parent_id=_order.trade_parent_id).all()
+                            db.session.commit()
+                            for record in records:
+                                user = User.query.filter_by(username=_order.username).first()
+                                if record.dai_tixian is not None:
+                                    user.dai_tixian = round(float(user.dai_tixian) - float(record.dai_tixian), 2)
+                                if record.ke_tixian is not None:
+                                    user.ke_tixian = round(float(user.ke_tixian) - float(record.ke_tixian), 2)
+                                db.session.commit()
+
 
 
 def group_time(list):
@@ -761,6 +832,7 @@ def tb_order_task():
     scheduler.add_job(func=tb_new_order_job, trigger='interval', seconds=60, id='tb_order_task')
     scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=300, id='tb_upd_order_status_task')
     scheduler.add_job(func=jd_new_order_job, trigger='interval', seconds=60, id='jd_order_task')
+    # scheduler.add_job(func=jd_order_status_job, trigger='interval', seconds=300, id='jd_upd_order_status_task')
     scheduler.start()
 
 
@@ -775,7 +847,6 @@ def tb_order_task():
 
 
 # 写在main里面，IIS不会运行
-
 
 tb_order_task()
 
