@@ -115,6 +115,7 @@ class CopyTwdRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(256), nullable=True)
     item_id = db.Column(db.String(256), nullable=True)
+    item_pic_url = db.Column(db.String(256), nullable=True)
     create_time = db.Column(db.DateTime, default=datetime.datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -181,6 +182,7 @@ class Order(db.Model):
     item_id = db.Column(db.String(256), nullable=True)
     pic_url = db.Column(db.String(256), nullable=True)
     shop_type = db.Column(db.String(256), nullable=True)
+    order_from = db.Column(db.String(256), nullable=True)
     item_title = db.Column(db.String(256), nullable=True)
     paid_time = db.Column(db.String(256), nullable=True)
     order_status = db.Column(db.String(256), nullable=True)
@@ -231,6 +233,7 @@ def tb_new_order_job():
                                   item_id=item['item_id'],
                                   pic_url=item['item_img'],
                                   shop_type=item['order_type'],
+                                  order_from='tb',
                                   item_title=item['item_title'],
                                   paid_time=item['tk_paid_time'],
                                   order_status='已付款' if item['tk_status'] == 12 else item['tk_status'],
@@ -252,6 +255,55 @@ def tb_new_order_job():
                     db.session.commit()
                 else:
                     print('#####there is a new order but cant find tpwd copyer###'+item['trade_parent_id'])
+def jd_new_order_job():
+    # now = time.strftime("%Y%m%d%H%M", time.localtime())
+    now = '202103091544'
+    order_response = requests.get(
+        'http://api.web.ecapi.cn/jingdong/getJdUnionOrders?apkey={}&time={}&type=1&pageNo=1&pageSize=100&key_id={}'.format(
+            apkey, now, key_id))
+    order_json = order_response.json()
+    if order_json['code'] == 200:
+        list = order_json['data']['list']
+        for list_ in list:
+            for item in list_['skuList']:
+                # 判断是否存在于订单表.不存在就插入订单表
+                trade_parent_id__firstOrder = Order.query.filter(Order.trade_parent_id == list_['orderTime']).first()
+                db.session.commit()
+                if trade_parent_id__firstOrder:
+                    print(list_['orderTime'], 'already in db.')
+                else:
+                    print(list_['orderTime'], 'not in db.')
+                    # 找出这个订单属于谁.默认给离付款时间最近发送过该itemid的人
+                    first = CopyTwdRecord.query.filter(CopyTwdRecord.item_id == item['skuId']).order_by(
+                        CopyTwdRecord.create_time.desc()).first()
+                    db.session.commit()
+                    if first:
+                        order = Order(username=first.username,
+                                      item_id=item['skuId'],
+                                      pic_url=first.item_pic_url,
+                                      shop_type='京东',
+                                      order_from='jd',
+                                      item_title=item['skuName'],
+                                      paid_time='',
+                                      order_status='已付款' if item['validCode'] == 16 else item['validCode'],
+                                      sys_status='待提现' if item['validCode'] == 16 else item['validCode'],
+                                      pay_price=item['estimateCosPrice'],
+                                      actual_pre_fanli=item['estimateFee'],
+                                      actual_fanli=item['actualFee'],
+                                      trade_parent_id=list_['orderTime'],
+                                      response_text=str(item))
+                        db.session.add(order)
+                        db.session.commit()
+                        # 新增了订单,就把该用户的待提现金额+=预估金额(金额有改动,就insert到金额的记录表)
+                        user = User.query.filter(User.username==first.username).first()
+                        user.dai_tixian = round(float(user.dai_tixian) + float(order.actual_pre_fanli), 2)
+                        db.session.commit()
+                        record = UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli,
+                                                 trade_parent_id=list_['orderTime'])
+                        db.session.add(record)
+                        db.session.commit()
+                    else:
+                        print('#####there is a new order but cant find tpwd copyer###'+list_['orderTime'])
 
 
 
@@ -360,6 +412,17 @@ def tb_details_one():
     return ''
 
 
+@app.route('/jd/details_one', methods=['GET', 'POST'])
+def jd_details_one():
+    req_data = request.get_json(silent=True)
+    if req_data:
+        itemid = req_data['itemid']
+        print('details_one', itemid)
+        t_result = jd_item_youhui(itemid, '')
+        return jsonify(t_result.to_json())
+    return ''
+
+
 @app.route('/wx/order_tx_counts', methods=['GET', 'POST'])
 def wx_order_tx_counts():
     req_data = request.get_json(silent=True)
@@ -407,6 +470,7 @@ def judge_user_exsits(openid):
                     alipay_account='')
         db.session.add(user)
         db.session.commit()
+        user = User.query.filter_by(username=openid).first()
     return user
 
 
@@ -418,7 +482,8 @@ def copy_twd_record():
         # 复制淘口令的时候,若用户不在库里,就新建用户
         judge_user_exsits(openid)
         item_id = req_data['item_id']
-        copy_twd = CopyTwdRecord(username=openid, item_id=item_id)
+        item_pic_url = req_data['item_pic_url'] if req_data.__contains__('item_pic_url') else ''
+        copy_twd = CopyTwdRecord(username=openid, item_id=item_id, item_pic_url=item_pic_url)
         db.session.add(copy_twd)
         db.session.commit()
         return {'r': '1'}
@@ -450,6 +515,7 @@ def result():
         # 修改用户的可提现金额
         user = User.query.filter_by(username=openid).first()
         user.ke_tixian = round(float(user.ke_tixian) + float(jine), 2)
+        user.yi_tixian = round(float(user.yi_tixian) - float(jine), 2)
         db.session.commit()
         # 金额有变化,就插到金额变化表
         record = UserMoneyRecord(username=openid, ke_tixian=float(jine))
@@ -568,10 +634,29 @@ def tb_details_many():
     return ''
 
 
+def juege_order_exist(orders, trade_parent_id, _status):
+    for order in orders:
+        if order.trade_parent_id == trade_parent_id and _status in order.order_status:
+            return True
+    return False
+
+
 def find_dif_status_order(list_):
     trade_ids = []
+    new_items = []
     for _t in list_:
         trade_ids.append(_t['trade_parent_id'])
+    trade_ids = tuple(trade_ids)
+    orders = Order.query.filter(Order.trade_parent_id.in_(trade_ids)).all()
+    for item in list_:
+        # 判断这个item跟系统的order的状态是否一致,若不一致,就加入到new_items
+        _status = tk_status_map[str(item['tk_status'])]
+        trade_parent_id = item['trade_parent_id']
+        if not juege_order_exist(orders, trade_parent_id, _status):
+            new_items.append(item)
+    db.session.commit()
+    return new_items
+
 
 
 def tb_order_status_job():
@@ -579,7 +664,7 @@ def tb_order_status_job():
     查order表状态为已付款的订单,按paid_time智能排序.
     :return:
     """
-    orders = Order.query.filter_by(order_status='已付款').order_by(Order.paid_time.asc()).all()
+    orders = Order.query.filter_by(order_status='已付款', order_from='tb').order_by(Order.paid_time.asc()).all()
     db.session.commit()
     list = []
     trade_id_status = {}
@@ -596,7 +681,7 @@ def tb_order_status_job():
         order_json = order_response.json()
         if order_json['code'] == 200:
             list_ = order_json['data']['list']
-            #todo 把_list与当前订单状态一致的,直接从_list删除
+            # 把_list与当前订单状态一致的,直接从_list删除
             list_ = find_dif_status_order(list_)
             for item in list_:
                 # 判断该订单状态是否为12(已付款),不是就更新
@@ -669,12 +754,13 @@ def time_2_str_list(new_list):
 
 
 def tb_order_task():
-    print("tb_order_task start " + str(os.getpid()))
+    print("task start " + str(os.getpid()))
     scheduler = APScheduler()
     scheduler.init_app(app)
     # 淘宝联盟查询订单的定时任务，每隔60s执行1次
     scheduler.add_job(func=tb_new_order_job, trigger='interval', seconds=60, id='tb_order_task')
     scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=300, id='tb_upd_order_status_task')
+    scheduler.add_job(func=jd_new_order_job, trigger='interval', seconds=60, id='jd_order_task')
     scheduler.start()
 
 
@@ -691,10 +777,10 @@ def tb_order_task():
 # 写在main里面，IIS不会运行
 
 
-
 tb_order_task()
 
 if __name__ == '__main__':
+    # tb_order_status_job()
     # float___ = round(float('1.23') + float('1.11'), 2)
     # tb_new_order_job()
     print('app start...')

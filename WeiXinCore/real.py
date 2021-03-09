@@ -7,20 +7,115 @@ from bs4 import BeautifulSoup
 import time
 import os
 
-# app = Flask(__name__)
-# ctx = app.app_context()
-# ctx.push()
-
-# @app.route()
-
 # api文档:https://www.ecapi.cn/index/index/openapi/id/50.shtml?ptype=1
 # 云商数据:https://console.ecapi.cn/dashboard/workplace
 
 apkey = '106dd6f8-103e-f437-6b53-43b80c09ef07'
+#tb
 pid = 'mm_50401481_2105100471_110937350217'
 tbname = 'imc701'
+#jd
+key_id = 'J4737658254124025'
 
 details_url = 'http://afanxyz.xyz/pages/goodsdetail/goodsdetail?goodsId='
+details_urljd = 'http://afanxyz.xyz/pages/goodsdetail/goodsdetailjd?goodsId='
+no_youhui_words = '该商品没有返利，换一个试试吧~'
+
+def jd_item_youhui(skuid, username):
+    response = requests.get('http://api.web.ecapi.cn/jingdong/getJdUnionItems?apkey={}&skuIds={}'.format(apkey, skuid))
+    response_json = response.json()
+    if 200 == response_json['code']:
+        data = response_json['data']
+        if len(data['list']) > 0:
+            result_jd = TextResult_JD(data['list'][0], username)
+            return result_jd
+        else:
+            return no_youhui_words
+    else:
+        return no_youhui_words
+
+def tuiguangwei():
+    return requests.get('http://api.web.ecapi.cn/jingdong/getUnionPosition?apkey={}&key_id={}&unionType=1&pageIndex=1&pageSize=100'.format(apkey, key_id))
+
+def jd_item_mine(item_url):
+    return requests.get('http://api.web.ecapi.cn/jingdong/doItemCpsUrl?autoSearch=1&apkey={}&materialId={}&key_id={}'.format(apkey, urllib.parse.quote(item_url), key_id))
+
+def find_the_best_jd_quan(item):
+    for _j in item['couponInfo']['couponList']:
+        if _j['isBest'] == 1:
+            return _j
+    return ''
+
+
+def timestamp_to_strtime(timestamp):
+    local_str_time = datetime.datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d')
+    return local_str_time
+
+
+class TextResult_JD:
+    def __init__(self, item, username=''):
+        self.username = username
+        self.code = 200
+        self.intext = ''
+        self.title = item['skuName']
+        self.shop_name = item['shopInfo']['shopName']
+        self.selled_goods_count = item['inOrderCount30Days']
+        self.small_images = []
+        for _i in item['imageInfo']['imageList']:
+            self.small_images.append(_i['url'])
+        self.pict_url = item['imageInfo']['whiteImage']
+        self.shop_type = '京东'
+        self.item_id = item['skuId']
+        self.ori_price = float(item['priceInfo']['price'])
+        self.max_commission_rate = float(item['commissionInfo']['commissionShare'])
+        self.has_coupon = item['couponInfo']['couponList'] if item['couponInfo'].__contains__('couponList') else False
+        if self.has_coupon != '' and len(item['couponInfo']['couponList']) > 0:
+            quan = find_the_best_jd_quan(item)
+            if quan:
+                self.has_coupon = True
+                self.quan_menkan = quan['quota']
+                self.coupon_start_time = timestamp_to_strtime(quan['getStartTime'])
+                self.coupon_end_time = timestamp_to_strtime(quan['getEndTime'])
+                self.quanzhi = float(quan['discount'])
+                self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 100.0, 2)
+            else:
+                self.has_coupon = False
+        if not self.has_coupon:
+            self.quanzhi = 0
+            self.fanxian = round(self.ori_price * self.max_commission_rate / 100.0, 2)
+            self.coupon_start_time = ''
+            self.coupon_end_time = ''
+        self.mykoulin = ''
+        self.tar_price = round(self.ori_price - self.quanzhi, 2)
+        self.final_price = round(self.tar_price - self.fanxian, 2)
+        if self.username:
+            self.url = details_urljd + str(self.item_id) + '&username=' + str(self.username)
+        else:
+            mine = jd_item_mine('https://wqitem.jd.com/item/view?sku={}'.format(self.item_id))
+            mine = mine.json()
+            if mine['code'] == 200:
+                self.url = mine['data']['shortURL']
+            else:
+                self.url = ''
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+    def result(self):
+        return '''【97go】优惠券￥{} 返利红包￥{} 到手价￥{}'''.format(self.quanzhi, self.fanxian, self.final_price)
+
+
+
+
+
+
+
+
+
 
 
 def query_goods_by_id(itemid):
@@ -114,16 +209,6 @@ def order_thread():
     每3分钟跑一次淘客订单接口,更新本地db的状态并结算金额.
     :return:
     '''
-    now = time.strftime("%Y-%m-%d+%H:%M:%S", time.localtime())
-    before = (datetime.datetime.now() - datetime.timedelta(minutes=20)).strftime("%Y-%m-%d+%H:%M:%S")
-
-    order_response = requests.get('http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}&page_size=100'.format(apkey,now,before,tbname))
-    order_json = order_response.json()
-    if order_json['code']==200:
-        list_ = order_json['data']['list']
-        for item in list_:
-            pass
-
     print()
 
 
@@ -248,22 +333,20 @@ class RecommendResult:
             del item["_sa_instance_state"]
         return item
 
+def jd_copy_url_2_itemid(url):
+    try:
+        split = url.split('.html')
+        return split[0].split('product/')[1]
+    except Exception:
+        return ''
+
 
 if __name__ == '__main__':
-    keyword = maybe_u_like_by_keyword('')
-    json = keyword.json()
+    intext = 'https://item.m.jd.com/product/100009089707.html?wxa_abtest=o&utm_source=iosapp&utm_medium=appshare&utm_campaign=t_335139774&utm_term=CopyURL&ad_od=share&utm_user=plusmember&gx=RnEwlWYIaz3dyNQUp4J1WtdRHrkhDP_U'
+    itemid = jd_item_youhui('3720892','')
     print()
-    order_thread()
-    share_url = '哈哈￥QykNcCn5zZh￥'
-    share_url = '苹果12钢化水凝膜苹果X/xr/xs/全屏覆盖iphone7/8/plus偷窥全包边iphone11pro max磨砂纳米手机软膜抗蓝光max'
-    print((share_url[0:5]))
-    # response = query_goods_by_id('571900197140')
-    # response = query_youhui_by_itemid('634753362776')
-    # t_result = TextResult(share_url)
-    # to_str = t_result.handle_to_str()
-    # print(to_str)
-    response = query_youhui_by_tpwdcode(share_url)
-    # response = maybe_u_like_by_keyword('AirPods')
-    # response = order_thread()
+
+    # response = jd_item_mine('https://wqitem.jd.com/item/view?sku=100016960656')
+    response = jd_item_youhui('100014997622')
     response_json = response.json()
     print(response.json())
