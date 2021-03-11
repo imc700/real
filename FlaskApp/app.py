@@ -292,7 +292,7 @@ def jd_new_order_job():
                                       pay_price=item['estimateCosPrice'],
                                       actual_pre_fanli=item['estimateFee'],
                                       actual_fanli=item['actualFee'],
-                                      trade_parent_id=list_['orderTime'],
+                                      trade_parent_id=str(list_['orderTime'])+'-'+str(item['skuId']),
                                       response_text=str(item))
                         db.session.add(order)
                         db.session.commit()
@@ -301,7 +301,7 @@ def jd_new_order_job():
                         user.dai_tixian = round(float(user.dai_tixian) + float(order.actual_pre_fanli), 2)
                         db.session.commit()
                         record = UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli,
-                                                 trade_parent_id=list_['orderTime'])
+                                                 trade_parent_id=str(list_['orderTime'])+'-'+str(item['skuId']))
                         db.session.add(record)
                         db.session.commit()
                     else:
@@ -660,7 +660,7 @@ def find_dif_status_order(list_):
     return new_items
 
 def any_timestamp_to_strtime(timestamp, strformat):
-    local_str_time = datetime.datetime.fromtimestamp(timestamp / 1000.0).strftime(strformat)
+    local_str_time = datetime.datetime.fromtimestamp(float(timestamp) / 1000.0).strftime(strformat)
     return local_str_time
 
 def tb_order_status_job():
@@ -721,10 +721,10 @@ def tb_order_status_job():
                             db.session.commit()
 
 
-def find_jd_dif_order_status(items, trade_id_status):
+def find_jd_dif_order_status(trade_parent_id, items, trade_id_status):
     new_items = []
     for item in items:
-        if trade_id_status[item['orderTime']] != jd_status_map[item['validCode']]:
+        if trade_id_status[str(trade_parent_id) + '-' + str(item['skuId'])] != jd_status_map[str(item['validCode'])]:
             new_items.append(item)
     return new_items
 
@@ -740,7 +740,7 @@ def jd_order_status_job():
     trade_id_status = {}
     for order in orders:
         trade_id_status[order.trade_parent_id] = order.order_status
-        list.append(any_timestamp_to_strtime(order.trade_parent_id, '%Y%m%d%H'))
+        list.append(any_timestamp_to_strtime(order.trade_parent_id.split('-')[0], '%Y%m%d%H'))
     final_list = set(list)
     for now in final_list:
         order_response = requests.get(
@@ -751,19 +751,19 @@ def jd_order_status_job():
             list = order_json['data']['list']
             for list_ in list:
                 # 选出与库里状态不同的进行接下来的处理
-                dif_status_items = find_jd_dif_order_status(list_['skuList'], trade_id_status)
+                dif_status_items = find_jd_dif_order_status(list_['orderTime'], list_['skuList'], trade_id_status)
                 for item in dif_status_items:
                     # 判断该订单状态是否为12(已付款),不是就更新
                     # todo jd的订单状态查询待编写
-                    if item['validCode'] != 16:
-                        _order = Order.query.filter_by(trade_parent_id=item['trade_parent_id']).first()
+                    if int(item['validCode']) != 16:
+                        _order = Order.query.filter_by(trade_parent_id=str(list_['orderTime']) + '-' + str(item['skuId'])).first()
                         db.session.commit()
-                        _status = tk_status_map[str(item['tk_status'])]
-                        _wx_status = wx_status_map[str(item['tk_status'])]
+                        _status = jd_status_map[str(item['validCode'])]
+                        _wx_status = jd_sys_status_map[str(item['validCode'])]
                         _order.order_status = _status
                         _order.sys_status = _wx_status
                         db.session.commit()
-                        if item['validCode'] == 17:
+                        if int(item['validCode']) == 17:
                             # (确认收货)后把金额加到可提现中
                             # 修改用户的可提现金额和待提现金额
                             user = User.query.filter_by(username=_order.username).first()
@@ -776,7 +776,7 @@ def jd_order_status_job():
                                                      trade_parent_id=_order.trade_parent_id)
                             db.session.add(record)
                             db.session.commit()
-                        if item['validCode'] == 13:
+                        if int(item['validCode']) < 15:
                             # (订单关闭)了的话,应追溯该订单号的所有金额来往,还原回去.
                             records = UserMoneyRecord.query.filter_by(trade_parent_id=_order.trade_parent_id).all()
                             db.session.commit()
@@ -832,9 +832,8 @@ def tb_order_task():
     scheduler.add_job(func=tb_new_order_job, trigger='interval', seconds=60, id='tb_order_task')
     scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=300, id='tb_upd_order_status_task')
     scheduler.add_job(func=jd_new_order_job, trigger='interval', seconds=60, id='jd_order_task')
-    # scheduler.add_job(func=jd_order_status_job, trigger='interval', seconds=300, id='jd_upd_order_status_task')
+    scheduler.add_job(func=jd_order_status_job, trigger='interval', seconds=300, id='jd_upd_order_status_task')
     scheduler.start()
-
 
 
 # def handle_categary():
@@ -847,7 +846,6 @@ def tb_order_task():
 
 
 # 写在main里面，IIS不会运行
-
 tb_order_task()
 
 if __name__ == '__main__':
