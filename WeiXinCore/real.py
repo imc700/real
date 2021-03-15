@@ -19,7 +19,9 @@ key_id = 'J4737658254124025'
 
 details_url = 'http://afanxyz.xyz/pages/goodsdetail/goodsdetail?goodsId='
 details_urljd = 'http://afanxyz.xyz/pages/goodsdetail/goodsdetailjd?goodsId='
+details_urlpdd = 'http://afanxyz.xyz/pages/goodsdetail/goodsdetailpdd?goodsId='
 no_youhui_words = '该商品没有返利，换一个试试吧~'
+
 
 def jd_item_youhui(skuid, username):
     response = requests.get('http://api.web.ecapi.cn/jingdong/getJdUnionItems?apkey={}&skuIds={}'.format(apkey, skuid))
@@ -34,11 +36,31 @@ def jd_item_youhui(skuid, username):
     else:
         return no_youhui_words
 
+
+def pdd_item_youhui(goods_id, username):
+    response = requests.get('http://api.web.ecapi.cn/pinduoduo/getGoodsDetailInfo?apkey={}&goods_id_list=["{}"]'.format(apkey, goods_id))
+    response_json = response.json()
+    if 200 == response_json['code']:
+        data = response_json['data']
+        if len(data) > 0:
+            result_pdd = TextResult_PDD(data[0], username)
+            return result_pdd
+        else:
+            return no_youhui_words
+    else:
+        return no_youhui_words
+
+
 def tuiguangwei():
     return requests.get('http://api.web.ecapi.cn/jingdong/getUnionPosition?apkey={}&key_id={}&unionType=1&pageIndex=1&pageSize=100'.format(apkey, key_id))
 
+
 def jd_item_mine(item_url):
     return requests.get('http://api.web.ecapi.cn/jingdong/doItemCpsUrl?autoSearch=1&apkey={}&materialId={}&key_id={}'.format(apkey, urllib.parse.quote(item_url), key_id))
+
+
+def pdd_item_mine(goods_id):
+    return requests.get('http://api.web.ecapi.cn/pinduoduo/createItemPromotionUrl?apkey={}&p_id=13643409_194357272&pdname=18627783779&goods_id_list=["{}"]'.format(apkey, goods_id))
 
 def find_the_best_jd_quan(item):
     for _j in item['couponInfo']['couponList']:
@@ -51,6 +73,13 @@ def timestamp_to_strtime(timestamp):
     local_str_time = datetime.datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d')
     return local_str_time
 
+
+def timestamp_to_strtime10(timestamp):
+    # 转换成localtime
+    time_local = time.localtime(timestamp)
+    # 转换成新的时间格式(2016-05-05 20:28:54)
+    dt = time.strftime("%Y-%m-%d", time_local)
+    return dt
 
 class TextResult_JD:
     def __init__(self, item, username=''):
@@ -95,6 +124,59 @@ class TextResult_JD:
             mine = mine.json()
             if mine['code'] == 200:
                 self.url = mine['data']['shortURL']
+            else:
+                self.url = ''
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+    def result(self):
+        return '''【97go】优惠券￥{} 返利红包￥{} 到手价￥{}'''.format(self.quanzhi, self.fanxian, self.final_price)
+
+
+class TextResult_PDD:
+    def __init__(self, item, username=''):
+        self.username = username
+        self.code = 200
+        self.intext = ''
+        self.title = item['goods_name']
+        self.shop_name = item['mall_name']
+        self.selled_goods_count = item['sales_tip']
+        self.small_images = []
+        for _i in item['goods_gallery_urls']:
+            self.small_images.append(_i)
+        self.pict_url = item['goods_image_url']
+        self.shop_type = '拼多多'
+        self.item_id = item['goods_id']
+        self.ori_price = round(float(item['min_group_price'])/100, 2)
+        self.max_commission_rate = float(item['promotion_rate'])
+        self.has_coupon = item['has_coupon']
+        if self.has_coupon:
+            self.has_coupon = True
+            self.quan_menkan = item['coupon_min_order_amount']
+            self.coupon_start_time = timestamp_to_strtime10(item['coupon_start_time'])
+            self.coupon_end_time = timestamp_to_strtime10(item['coupon_end_time'])
+            self.quanzhi = float(item['coupon_discount'])/100
+            self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 1000.0, 2)
+        if not self.has_coupon:
+            self.quanzhi = 0
+            self.fanxian = round(self.ori_price * self.max_commission_rate / 1000.0, 2)
+            self.coupon_start_time = ''
+            self.coupon_end_time = ''
+        self.mykoulin = ''
+        self.tar_price = round(self.ori_price - self.quanzhi, 2)
+        self.final_price = round(self.tar_price - self.fanxian, 2)
+        if self.username:
+            self.url = details_urlpdd + str(self.item_id) + '&username=' + str(self.username)
+        else:
+            mine = pdd_item_mine(self.item_id)
+            mine = mine.json()
+            if mine['code'] == 200:
+                self.url = mine['data']['url'][0]['mobile_short_url']
             else:
                 self.url = ''
 
@@ -333,6 +415,7 @@ class RecommendResult:
             del item["_sa_instance_state"]
         return item
 
+
 def jd_copy_url_2_itemid(url):
     try:
         split = url.split('.html')
@@ -341,9 +424,17 @@ def jd_copy_url_2_itemid(url):
         return ''
 
 
+def pdd_copy_url_2_itemid(url):
+    try:
+        split = url.split('goods_id=')
+        return split[1].split('&')[0]
+    except Exception:
+        return ''
+
+
 if __name__ == '__main__':
     intext = 'https://item.m.jd.com/product/100009089707.html?wxa_abtest=o&utm_source=iosapp&utm_medium=appshare&utm_campaign=t_335139774&utm_term=CopyURL&ad_od=share&utm_user=plusmember&gx=RnEwlWYIaz3dyNQUp4J1WtdRHrkhDP_U'
-    itemid = jd_item_youhui('3720892','')
+    itemid = pdd_item_youhui('163838499563','')
     print()
 
     # response = jd_item_mine('https://wqitem.jd.com/item/view?sku=100016960656')

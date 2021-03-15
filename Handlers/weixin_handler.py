@@ -23,6 +23,15 @@ def onText(wxmsg):
             return wxmsg.resp_link(jd_result), jd_result
         else:
             return wxmsg.resp_text(u'官人,请分享商品链接给我哟~'), None
+    elif 'yangkeduo' in inTxt.lower():
+        itemid = pdd_copy_url_2_itemid(inTxt)
+        if itemid:
+            pdd_result = pdd_item_youhui(itemid, wxmsg.ToUserName)
+            if pdd_result.code != 200:
+                return wxmsg.resp_text(no_youhui_words), pdd_result
+            return wxmsg.resp_link(pdd_result), pdd_result
+        else:
+            return wxmsg.resp_text(u'官人,请分享商品链接给我哟~'), None
     else:
         return wxmsg.resp_text(u'官人,请分享商品链接给我哟~'), None
 
