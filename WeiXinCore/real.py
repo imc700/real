@@ -308,7 +308,8 @@ class TextResult:
             self.title = response_json['data']['item_info']['title']
             self.shop_name = response_json['data']['item_info']['nick']
             self.selled_goods_count = response_json['data']['item_info']['volume']
-            self.small_images = response_json['data']['item_info']['small_images']['string']
+            self.small_images = response_json['data']['item_info']['small_images']['string'] if response_json['data']['item_info'].__contains__(
+                'small_images') else ''
             self.pict_url = response_json['data']['item_info']['pict_url']
             if response_json['data']['item_info']['user_type'] == 1:
                 self.shop_type = '天猫'

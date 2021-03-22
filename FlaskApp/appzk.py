@@ -1,5 +1,6 @@
 import datetime
-
+import smtplib
+from email.mime.text import MIMEText
 from flask_apscheduler import APScheduler
 from flask_sqlalchemy import SQLAlchemy
 from flask import jsonify
@@ -19,6 +20,33 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 # 继承db.model 是为了方便操作数据库
 # 注册数据库连接
 db = SQLAlchemy(app)
+
+
+class Tie(db.Model):
+    """
+    赚吧专用
+    """
+    __tablename = 'tie'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    username = db.Column(db.String(256), nullable=True)
+    title = db.Column(db.String(256), nullable=True)
+    url = db.Column(db.String(256), nullable=True)
+    fatie_time = db.Column(db.String(256), nullable=True)
+    wu_guo = db.Column(db.Integer, nullable=True)
+    shi_guo = db.Column(db.Integer, nullable=True)
+    create_time = db.Column(db.DateTime, default=datetime.datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        if "create_time" in item:
+            del item["create_time"]
+        if "update_time" in item:
+            del item["update_time"]
+        return item
 
 
 class Msg(db.Model):
@@ -840,20 +868,238 @@ def time_2_str_list(new_list):
     return str_time_list
 
 
+# 为节约时间,将赚吧的爬虫用flask的定时任务来处理.
+# thread_1不停的将新帖子塞入表中
+# thread_2不停的轮询数据库,将到了5min和10min节点的帖子捞出来去查下加果数量.(当两个时间节点都有值了,帖子作废.)
+
+
+zk_ck = '''_uab_collina=157658487876881014467186
+ki1e_2132_client_token=4A9E2CEFDE864132E92731B53549EDDC
+ki1e_2132_connect_is_bind=1
+ki1e_2132_connect_uin=4A9E2CEFDE864132E92731B53549EDDC
+ki1e_2132_smile=1D1
+__gads=ID=ed95e6561fd9ec67:T=1586764873:S=ALNI_MYht-nfWz7mNspwDAW77J89S1IyAw
+Hm_lvt_da6569f688ba2c32429af00afd9eb8a1=1595206309
+Hm_lpvt_da6569f688ba2c32429af00afd9eb8a1=1596858685
+amvid=8892842a7f982862c84db144f18db9dd
+ki1e_2132_lastviewtime=368047%7C1597806020
+ki1e_2132_con_request_uri=http%3A%2F%2Fwww.zuanke8.com%2Fconnect.php%3Fmod%3Dlogin%26op%3Dcallback%26referer%3Dhttp%253A%252F%252Fwww.zuanke8.com%252Fre.php
+ki1e_2132_saltkey=uJ35P5p9
+ki1e_2132_lastvisit=1613607496
+ki1e_2132_home_diymode=1
+ki1e_2132_client_created=1615162470
+ki1e_2132_auth=d173EjxxOWtYzlg7h3bCwkce0nzXDC9P7VPtykOSQ5KNNFM3PwUYDpl1mHKIoDT%2FGr3ZNaBQ2SucprriL0lk3XMVw9k
+ki1e_2132_connect_login=1
+timestamp=1615526008000
+sign=BC1A70EA1839C6C35271376F58934054
+ki1e_2132_pc_size_c=0
+ki1e_2132_connect_last_report_time=2021-03-15
+ki1e_2132_ulastactivity=1615788741%7C0
+ki1e_2132_viewid=tid_7926232
+ki1e_2132_lastcheckfeed=368047%7C1615789373
+ki1e_2132_sendmail=1
+ki1e_2132_lastact=1615789373%09connect.php%09check'''
+zk_cks = {}
+for _i in zk_ck.split('\n'):
+    zy = _i.split('=')
+    zk_cks[zy[0]] = zy[1]
+
+
+def get_millis_by_hours_age(hour):
+    """
+    获取距当前时间多少小时前的13位时间戳
+    :param hour:
+    :return:
+    """
+    # 获取13位当前时间戳
+    # millis = int(round(time.time() * 1000))
+    t = datetime.datetime.now()
+    # 1小时前
+    t2 = (t - datetime.timedelta(hours=hour)).strftime("%Y-%m-%d %H:%M:%S")
+    # 转为秒级时间戳
+    ts2 = time.mktime(time.strptime(t2, '%Y-%m-%d %H:%M:%S'))
+    # 转为毫秒级
+    start_time = int(str(ts2 * 1000).split(".")[0])
+    return start_time
+
+
+def get_tags(list_tags_with_enter):
+    """
+    bs4取多个元素时经常带换行符,该方法去掉所有换行符
+    :param list_tags_with_enter:
+    :return:
+    """
+    tags = []
+    for _x in list_tags_with_enter:
+        if _x != '\n':
+            tags.append(_x)
+    return tags
+
+
+def str_time_turn_2_millis(t2):
+    ts2 = time.mktime(time.strptime(t2.strip(), '%Y-%m-%d %H:%M'))
+    # 转为毫秒级
+    return int(str(ts2 * 1000).split(".")[0])
+
+
+def cha_seconds(chuo_da,chuo_xiao):
+    """
+    两个时间戳相隔多少秒__1615888034.006177
+    :param chuo_da:
+    :param chuo_xiao:
+    :return:
+    """
+    return (datetime.datetime.fromtimestamp(chuo_da/1000) - datetime.datetime.fromtimestamp(chuo_xiao/1000)).seconds
+
+
+def get_guoguo_count(tie):
+    try:
+        response = requests.get(tie.url, cookies=zk_cks, timeout=5)
+    except Exception as e:
+        print('timeout')
+        return -1
+    content_decode = response.content.decode('gbk')
+    time.sleep(2)
+    if '人评分, 查看全部评分' in content_decode:
+        i = int(content_decode.split('人评分, 查看全部评分')[0][-1])
+        if i == 0:
+            return int(content_decode.split('人评分, 查看全部评分')[0][-2:])
+        else:
+            return i
+    return 0
+
+
+def zhuan_ba_tie_hot():
+    """
+    每分钟跑一次
+    以距db里发帖时间5,10分钟为节点,爬出俩节点的帖子果果数(后续可根据果果数来判定是否为热帖进行邮件推送)
+    :return:
+    """
+    now = datetime.datetime.now()
+    today = now - datetime.timedelta(hours=0.25)
+    # ties_in_one_hour = db.session.query(Tie).filter(extract('year', Tie.create_time) == today.year,
+    #                                                 extract('month', Tie.create_time) == today.month,
+    #                                                 extract('day', Tie.create_time) == today.day).order_by(Tie.create_time.desc()).all()
+    ties_in_one_hour = db.session.query(Tie).filter(Tie.create_time > today).order_by(Tie.create_time.desc()).all()
+    millis = int(round(time.time() * 1000))
+    print(datetime.datetime.now(), '查出15min内的数量为:', len(ties_in_one_hour))
+    useful_count = 0
+    for tie in ties_in_one_hour:
+        ts2 = time.mktime(time.strptime(tie.fatie_time, '%Y-%m-%d %H:%M'))
+        fatie_millis = int(str(ts2 * 1000).split(".")[0])
+        seconds = cha_seconds(millis, fatie_millis)
+        if 300 <= seconds < 360 and tie.wu_guo is None:
+            guo = get_guoguo_count(tie)
+            if guo >= 3:
+                send_mail('zk_5min___'+str(guo), tie.title+'\n'+tie.url+'\n'+tie.fatie_time)
+                tie.username = tie.username + '_sendMail'
+            tie.wu_guo = guo
+            db.session.commit()
+            useful_count+=1
+        elif 600 <= seconds < 660 and tie.shi_guo is None:
+            guo = get_guoguo_count(tie)
+            if guo >= 3 and '_sendMail' not in tie.username:
+                send_mail('zk_10min___'+str(guo), tie.title+'\n'+tie.url+'\n'+tie.fatie_time)
+            tie.shi_guo = guo
+            db.session.commit()
+            useful_count += 1
+    print(datetime.datetime.now(), '更新了果果的帖子数为:', useful_count)
+
+
+def zhuanba_task():
+    """
+    监控新贴
+    1.获取半小时内的所有帖子
+    2.拿到所有半小时内的帖子列表.然后查一次数据库整理出哪些是不在库里的,就插进去.
+    :return:
+    """
+    response = requests.get('http://www.zuanke8.com/forum-15-1.html', cookies=zk_cks, timeout=5)
+    content_decode = response.content.decode('gbk')
+    bs_html = BeautifulSoup(content_decode, "html.parser")
+    # 1.获取半小时内的所有帖子
+    all_new_ties = []
+    first_page_all_time_eles = bs_html.find_all(name='span', attrs={'class': 'xi1'})
+    for _i in first_page_all_time_eles:
+        fatie_time = _i.string
+        if '-' in fatie_time and ':' in fatie_time and str_time_turn_2_millis(fatie_time) > get_millis_by_hours_age(0.5):
+            username = get_tags(get_tags(list(_i.parent.previous_siblings))[0].contents)[0].string
+            for _j in get_tags(list(_i.parent.parent.previous_siblings)):
+                if _j['class'] != 'icn':
+                    a_tag = get_tags(_j.contents)[0]
+                    if a_tag.string is not None:
+                        t_map = {}
+                        t_map['title'] = a_tag.string
+                        t_map['url'] = a_tag['href']
+                        t_map['fatie_time'] = fatie_time
+                        t_map['username'] = username
+                        all_new_ties.append(t_map)
+
+    # 2.拿到所有半小时内的帖子列表.然后查一次数据库整理出哪些是不在库里的,就插进去.
+    now = datetime.datetime.now()
+    today = now - datetime.timedelta(hours=0.5)
+    print(now, 'find new_ties count:', len(all_new_ties))
+    # ties_in_one_hour = db.session.query(Tie).filter(extract('year', Tie.create_time) == today.year,
+    #                                extract('month', Tie.create_time) == today.month,
+    #                                extract('day', Tie.create_time) == today.day,
+    #                                extract('hour', Tie.create_time) >= today.hour).all()
+    ties_in_one_hour = db.session.query(Tie).filter(Tie.create_time >= today).order_by(Tie.create_time.desc()).all()
+    db.session.commit()
+    db_tie_urls = []
+    final_add_ties = []
+    for tie in ties_in_one_hour:
+        db_tie_urls.append(int(tie.url.split('-')[1]))
+    for new_tie in all_new_ties:
+        if int(new_tie['url'].split('-')[1]) not in db_tie_urls:
+            first = db.session.query(Tie).filter(Tie.url == new_tie['url']).first()
+            if first is None:
+                _tie = Tie(username=new_tie['username'], fatie_time=new_tie['fatie_time'], url=new_tie['url'],
+                        title=new_tie['title'])
+                final_add_ties.append(_tie)
+    print(now, 'insert db_ties count:', len(final_add_ties))
+    if len(final_add_ties) > 0:
+        db.session.add_all(final_add_ties)
+    db.session.commit()
+
+
+def send_mail(title, content):
+    # 第三方 SMTP 服务
+    mail_host = "smtp.163.com"  # SMTP服务器
+    mail_user = "imc700@163.com"  # 用户名
+    mail_pass = "EARNLXZLZYSRXKQL"  # 密码(这里的密码不是登录邮箱密码，而是授权码)
+
+    sender = 'imc700@163.com'  # 发件人邮箱
+    receivers = ['imc700@qq.com']  # 接收人邮箱
+
+    message = MIMEText(content, 'plain', 'utf-8')  # 内容, 格式, 编码
+    message['From'] = "{}".format(sender)
+    message['To'] = ",".join(receivers)
+    message['Subject'] = title
+
+    try:
+        smtpObj = smtplib.SMTP_SSL(mail_host, 465)  # 启用SSL发信, 端口一般是465
+        smtpObj.login(mail_user, mail_pass)  # 登录验证
+        smtpObj.sendmail(sender, receivers, message.as_string())  # 发送
+        print("mail has been send successfully.")
+    except smtplib.SMTPException as e:
+        print(e)
+
+
 def tb_order_task():
     print("task start " + str(os.getpid()))
     scheduler = APScheduler()
     scheduler.init_app(app)
     # 淘宝联盟查询订单的定时任务，每隔60s执行1次
-    scheduler.add_job(func=tb_new_order_job, trigger='interval', seconds=60, id='tb_order_task')
-    scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=300, id='tb_upd_order_status_task')
-    scheduler.add_job(func=jd_new_order_job, trigger='interval', seconds=60, id='jd_order_task')
-    scheduler.add_job(func=jd_order_status_job, trigger='interval', seconds=300, id='jd_upd_order_status_task')
+    # scheduler.add_job(func=tb_new_order_job, trigger='interval', seconds=60, id='tb_order_task')
+    # scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=300, id='tb_upd_order_status_task')
+    # scheduler.add_job(func=jd_new_order_job, trigger='interval', seconds=60, id='jd_order_task')
+    # scheduler.add_job(func=jd_order_status_job, trigger='interval', seconds=300, id='jd_upd_order_status_task')
+    scheduler.add_job(func=zhuanba_task, trigger='interval', seconds=53, id='zhuanba_new_tie_task')
+    scheduler.add_job(func=zhuan_ba_tie_hot, trigger='interval', seconds=60, id='zhuan_ba_tie_hot_task')
     scheduler.start()
 
-
-# 写在main里面，IIS不会运行
+# zhuan_ba_tie_hot()
 tb_order_task()
+# zhuanba_task()
 
 
 
@@ -868,4 +1114,4 @@ if __name__ == '__main__':
     # float___ = round(float('1.23') + float('1.11'), 2)
     # tb_new_order_job()
     print('app start...')
-    app.run(host='0.0.0.0', port=39004)
+    app.run(host='0.0.0.0', port=39005)
