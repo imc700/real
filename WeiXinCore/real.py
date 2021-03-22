@@ -92,7 +92,7 @@ class TextResult_JD:
         self.small_images = []
         for _i in item['imageInfo']['imageList']:
             self.small_images.append(_i['url'])
-        self.pict_url = item['imageInfo']['whiteImage']
+        self.pict_url = item['imageInfo']['whiteImage'] if item['imageInfo'].__contains__('whiteImage') else ''
         self.shop_type = '京东'
         self.item_id = item['skuId']
         self.ori_price = float(item['priceInfo']['price'])
