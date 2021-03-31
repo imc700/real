@@ -37,14 +37,40 @@ def jd_item_youhui(skuid, username):
         return no_youhui_words
 
 
+def jd_item_youhui_list(keyword, username):
+    response = requests.get('http://api.web.ecapi.cn/jingdong/getJdUnionItems?apkey={}&keyword={}&hasBestCoupon=1'.format(apkey, keyword))
+    response_json = response.json()
+    if 200 == response_json['code']:
+        data = response_json['data']
+        if len(data['list']) > 0:
+            return data['list']
+        else:
+            return no_youhui_words
+    else:
+        return no_youhui_words
+
+
 def pdd_item_youhui(goods_id, username):
-    response = requests.get('http://api.web.ecapi.cn/pinduoduo/getGoodsDetailInfo?apkey={}&goods_id_list=["{}"]'.format(apkey, goods_id))
+    response = requests.get('http://api.web.ecapi.cn/pinduoduo/goodsSearch?apkey={}&keyword={}&pdname=18627783779&pid=13643409_176823327&page=1&page_size=30'.format(apkey, goods_id))
     response_json = response.json()
     if 200 == response_json['code']:
         data = response_json['data']
         if len(data) > 0:
-            result_pdd = TextResult_PDD(data[0], username)
+            result_pdd = TextResult_PDD(data['list'][0], username)
             return result_pdd
+        else:
+            return no_youhui_words
+    else:
+        return no_youhui_words
+
+
+def pdd_item_youhui_list(goods_id, username):
+    response = requests.get('http://api.web.ecapi.cn/pinduoduo/goodsSearch?apkey={}&keyword={}&pdname=18627783779&with_coupon=true&pid=13643409_176823327&page=1&page_size=30'.format(apkey, goods_id))
+    response_json = response.json()
+    if 200 == response_json['code']:
+        data = response_json['data']
+        if len(data['list']) > 0:
+            return data['list']
         else:
             return no_youhui_words
     else:
@@ -60,7 +86,7 @@ def jd_item_mine(item_url):
 
 
 def pdd_item_mine(goods_id):
-    return requests.get('http://api.web.ecapi.cn/pinduoduo/createItemPromotionUrl?apkey={}&p_id=13643409_194357272&pdname=18627783779&goods_id_list=["{}"]'.format(apkey, goods_id))
+    return requests.get('http://api.web.ecapi.cn/pinduoduo/createItemPromotionUrl?apkey={}&p_id=13643409_176823327&pdname=18627783779&goods_sign={}'.format(apkey, goods_id))
 
 def find_the_best_jd_quan(item):
     for _j in item['couponInfo']['couponList']:
@@ -144,12 +170,15 @@ class TextResult_PDD:
         self.code = 200
         self.intext = ''
         self.title = item['goods_name']
+        self.goods_sign = item['goods_sign']
         self.shop_name = item['mall_name']
         self.selled_goods_count = item['sales_tip']
         self.small_images = []
-        for _i in item['goods_gallery_urls']:
+        for _i in item['goods_gallery_urls']  if item.__contains__('goods_gallery_urls') else []:
             self.small_images.append(_i)
         self.pict_url = item['goods_image_url']
+        if len(self.small_images) < 1:
+            self.small_images.append(self.pict_url)
         self.shop_type = '拼多多'
         self.item_id = item['goods_id']
         self.ori_price = round(float(item['min_group_price'])/100, 2)
@@ -173,7 +202,7 @@ class TextResult_PDD:
         if self.username:
             self.url = details_urlpdd + str(self.item_id) + '&username=' + str(self.username)
         else:
-            mine = pdd_item_mine(self.item_id)
+            mine = pdd_item_mine(self.goods_sign)
             mine = mine.json()
             if mine['code'] == 200:
                 self.url = mine['data']['url'][0]['mobile_short_url']
@@ -390,11 +419,57 @@ class RecommendItem:
         return item
 
 
+class RecommendPddItem:
+    def __init__(self, item):
+        self.title = item['goods_name']
+        self.selled_goods_count = item['sales_tip']
+        self.pict_url = item['goods_image_url']
+        self.shop_type = '拼多多'
+        self.item_id = item['goods_id']
+        self.shop_name = item['mall_name']
+        self.ori_price = round(float(item['min_group_price'])/100, 2)
+        self.max_commission_rate = float(item['promotion_rate'])
+        self.quanzhi = float(item['coupon_discount'])/100
+        self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 1000.0, 2)
+        self.tar_price = round(self.ori_price - self.quanzhi, 2)
+        self.final_price = round(self.tar_price - self.fanxian, 2)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+
+class RecommendJdItem:
+    def __init__(self, item):
+        self.title = item['skuName']
+        self.selled_goods_count = item['inOrderCount30Days']
+        self.pict_url = item['imageInfo']['whiteImage'] if item['imageInfo'].__contains__('whiteImage') else ''
+        self.shop_type = '京东'
+        self.item_id = item['skuId']
+        self.shop_name = item['shopInfo']['shopName']
+        self.ori_price = float(item['priceInfo']['price'])
+        self.max_commission_rate = float(item['commissionInfo']['commissionShare'])
+        quan = find_the_best_jd_quan(item)
+        self.quanzhi = float(quan['discount'])
+        self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 100.0, 2)
+        self.tar_price = round(self.ori_price - self.quanzhi, 2)
+        self.final_price = round(self.tar_price - self.fanxian, 2)
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+
 class RecommendResult:
     '''
     商品详情页的更多推荐
     苹果12钢化水凝膜苹果
-1.5m加长2米3米iPhone6数据线6s苹果5s手机7Plus充电线器7P8X超长3m快充Xs原裝正品ipad
     '''
 
     def __init__(self, keyword):
@@ -407,6 +482,51 @@ class RecommendResult:
                 if 'youhuiquan' in item.keys():
                     recommend_item = RecommendItem(item)
                     results.append(recommend_item.to_json())
+        self.results = results
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+
+class RecommendPddResult:
+    '''
+    商品详情页的更多推荐
+    苹果12钢化水凝膜苹果
+    '''
+
+    def __init__(self, keyword):
+        result_list = pdd_item_youhui_list(keyword, '')
+        results = []
+        if len(result_list) > 0:
+            for item in result_list:
+                recommend_item = RecommendPddItem(item)
+                results.append(recommend_item.to_json())
+        self.results = results
+
+    def to_json(self):
+        """将实例对象转化为json"""
+        item = self.__dict__
+        if "_sa_instance_state" in item:
+            del item["_sa_instance_state"]
+        return item
+
+
+class RecommendJdResult:
+    '''
+    商品详情页的更多推荐
+    '''
+
+    def __init__(self, keyword):
+        result_list = jd_item_youhui_list(keyword, '')
+        results = []
+        if len(result_list) > 0:
+            for item in result_list:
+                recommend_item = RecommendJdItem(item)
+                results.append(recommend_item.to_json())
         self.results = results
 
     def to_json(self):
@@ -434,8 +554,10 @@ def pdd_copy_url_2_itemid(url):
 
 
 if __name__ == '__main__':
-    intext = 'https://item.m.jd.com/product/100009089707.html?wxa_abtest=o&utm_source=iosapp&utm_medium=appshare&utm_campaign=t_335139774&utm_term=CopyURL&ad_od=share&utm_user=plusmember&gx=RnEwlWYIaz3dyNQUp4J1WtdRHrkhDP_U'
-    itemid = pdd_item_youhui('163838499563','')
+    now_millis = int(time.time())
+    before_millis = str((datetime.datetime.now() - datetime.timedelta(minutes=20)).timestamp()).split('.')[0]
+
+    itemid = pdd_item_mine('161466624757')
     print()
 
     # response = jd_item_mine('https://wqitem.jd.com/item/view?sku=100016960656')
