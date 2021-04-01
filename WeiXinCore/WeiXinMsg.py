@@ -75,7 +75,6 @@ class WeiXinMsg(object):
 <FuncFlag>%s</FuncFlag>
 </xml>'''
         text_msg = template % (self.ToUserName, self.FromUserName, int(time.time()), text, funcFlag)
-        print(text_msg)
         return text_msg
 
     def resp_link(self, t_result):
