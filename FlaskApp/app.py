@@ -213,8 +213,8 @@ class Order(db.Model):
 def tb_new_order_job():
     now = time.strftime("%Y-%m-%d+%H:%M:%S", time.localtime())
     before = (datetime.datetime.now() - datetime.timedelta(minutes=20)).strftime("%Y-%m-%d+%H:%M:%S")
-    # before = '2021-03-30+22:28:27'
-    # now =    '2021-03-30+22:38:55'
+    # before = '2021-03-31+10:16:27'
+    # now =    '2021-03-31+10:35:55'
 
     order_response = requests.get(
         'http://api.web.ecapi.cn/taoke/tbkOrderDetailsGet?apkey={}&end_time={}&start_time={}&tbname={}&page_size=100'.format(
@@ -242,12 +242,12 @@ def tb_new_order_job():
                                           shop_type=item['order_type'],
                                           order_from='tb',
                                           item_title=item['item_title'],
-                                          paid_time=item['tk_paid_time'],
+                                          paid_time=item['tk_paid_time'] if item.__contains__('tk_paid_time') else '',
                                           order_status='已付款' if item['tk_status'] == 12 else item['tk_status'],
                                           sys_status='待提现' if item['tk_status'] == 12 else item['tk_status'],
-                                          pay_price=item['alipay_total_price'],
-                                          actual_pre_fanli=item['pub_share_pre_fee'],
-                                          actual_fanli=item['pub_share_fee'],
+                                          pay_price=item['alipay_total_price'] if item.__contains__('alipay_total_price') else '',
+                                          actual_pre_fanli=item['pub_share_pre_fee'] if item.__contains__('pub_share_pre_fee') else '',
+                                          actual_fanli=item['pub_share_fee'] if item.__contains__('pub_share_fee') else '',
                                           trade_parent_id=item['trade_id'],
                                           response_text=str(item))
                             db.session.add(order)
@@ -460,7 +460,7 @@ def echo():
         if isinstance(respXml, tuple):
             response = make_response(respXml[0])
             t_result = respXml[1]
-            if t_result:
+            if t_result is not None and type(t_result) != str:
                 db.session.add(record_msg(t_result))
                 db.session.commit()
         else:
@@ -1076,7 +1076,7 @@ def tb_order_task():
     scheduler.start()
 
 
-# tb_new_order_job()
+# tb_order_status_job()
 
 # 写在main里面，IIS不会运行
 tb_order_task()

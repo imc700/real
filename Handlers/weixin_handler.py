@@ -18,20 +18,22 @@ def onText(wxmsg):
         itemid = jd_copy_url_2_itemid(inTxt)
         if itemid:
             jd_result = jd_item_youhui(itemid, wxmsg.ToUserName)
-            if jd_result.code != 200:
+            # if jd_result.code != 200:
+            if type(jd_result) == str:
                 return wxmsg.resp_text(no_youhui_words), jd_result
             return wxmsg.resp_link(jd_result), jd_result
         else:
             return wxmsg.resp_text(u'官人,请分享商品链接给我哟~'), None
     elif 'yangkeduo' in inTxt.lower():
         itemid = pdd_copy_url_2_itemid(inTxt)
-        if itemid:
-            pdd_result = pdd_item_youhui(itemid, wxmsg.ToUserName)
-            if pdd_result.code != 200:
-                return wxmsg.resp_text(no_youhui_words), pdd_result
-            return wxmsg.resp_link(pdd_result), pdd_result
-        else:
-            return wxmsg.resp_text(u'官人,请分享商品链接给我哟~'), None
+        print('用户查询拼多多商品,itemid:', itemid)
+        # if itemid:
+        #     pdd_result = pdd_item_youhui(itemid, wxmsg.ToUserName)
+        #     if pdd_result.code != 200:
+        #         return wxmsg.resp_text(no_youhui_words), pdd_result
+        #     return wxmsg.resp_link(pdd_result), pdd_result
+        # else:
+        return wxmsg.resp_text(u'官人,拼多多返利规则有变.请查看菜单栏-返利教程-拼多多返利查看~'), None
     else:
         return wxmsg.resp_text(u'官人,请分享商品链接给我哟~'), None
 
