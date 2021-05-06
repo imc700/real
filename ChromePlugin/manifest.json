@@ -1,0 +1,45 @@
+{
+	"manifest_version": 2,
+	"name": "page_speeder",
+	"version": "1.0.0",
+	"description": "kappa报告打开时间",
+	"icons":
+	{
+		"16": "icon.png",
+		"48": "icon.png",
+		"128": "icon.png"
+	},
+	"background":
+	{
+		"scripts": ["background.js"]
+	},
+	"browser_action":
+	{
+		"default_icon": "icon.png",
+		"default_title": "page_speeder",
+		"default_popup": "popup.html"
+	},
+
+	"content_scripts":
+	[
+		{
+          //*://*.mypaas.com.cn/dataview/*
+			"matches": ["<all_urls>"],
+			"js": ["ari.js"],
+			"run_at": "document_end"
+		}
+	],
+	"permissions":
+	[
+		"contextMenus",
+		"tabs",
+		"notifications",
+		"webRequest",
+		"webRequestBlocking",
+		"storage",
+		"http://*/*",
+		"https://*/*"
+	],
+//	"web_accessible_resources": ["js/inject.js"],
+	"homepage_url": "https://www.baidu.com"
+}

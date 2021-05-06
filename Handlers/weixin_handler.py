@@ -14,7 +14,7 @@ def onText(wxmsg):
         if t_result.code != 200:
             return wxmsg.resp_text(no_youhui_words), t_result
         return wxmsg.resp_link(t_result), t_result
-    elif 'jd.com' in inTxt.lower():
+    elif 'jd.' in inTxt.lower():
         itemid = jd_copy_url_2_itemid(inTxt)
         if itemid:
             jd_result = jd_item_youhui(itemid, wxmsg.ToUserName)

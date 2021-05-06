@@ -150,8 +150,8 @@ class CopyTwdRecord(db.Model):
 
 pdd_status_map = {'-1': '未支付', '0': '已支付', '2': '确认收货', '3': '审核成功','1':'已成团','4':'审核失败','5':'已经结算','8':'无佣金订单','10':'已处罚'}
 tk_status_map = {'12': '付款', '13': '关闭', '14': '确认收货', '3': '结算成功'}
-jd_status_map = {'16': '已付款', '17': '已完成', '18': '已结算', '15': '待付款'}
-jd_sys_status_map = {'16': '待提现', '17': '可提现', '18': '已结算', '15': '待付款'}
+jd_status_map = {'16': '已付款', '17': '已完成', '18': '已结算', '15': '待付款', '22': '已失效'}
+jd_sys_status_map = {'16': '待提现', '17': '可提现', '18': '已结算', '15': '待付款', '22': '已失效'}
 wx_status_map = {'12': '待提现', '13': '关闭', '14': '可提现', '3': '结算成功'}
 
 
@@ -323,7 +323,7 @@ def pdd_new_order_job():
 
 def jd_new_order_job():
     now = time.strftime("%Y%m%d%H", time.localtime())
-    # now = '2021031213'
+    # now = '2021050520'
     order_response = requests.get(
         'http://api.web.ecapi.cn/jingdong/getJdUnionOrders?apkey={}&time={}&type=1&pageNo=1&pageSize=100&key_id={}'.format(
             apkey, now, key_id))
@@ -853,6 +853,9 @@ def tb_order_status_job():
                 if item['tk_status'] != 12:
                     _order = db.session.query(Order).filter_by(trade_parent_id=item['trade_id']).first()
                     db.session.commit()
+                    if _order is None:
+                        print(item, 'in web but not in db.so skip this one and next...')
+                        continue
                     _status = tk_status_map[str(item['tk_status'])]
                     _wx_status = wx_status_map[str(item['tk_status'])]
                     _order.order_status = _status
@@ -973,7 +976,8 @@ def jd_order_status_job():
     查order表状态为已付款的订单,按paid_time智能排序.
     :return:
     """
-    orders = db.session.query(Order).filter_by(order_status='已付款', order_from='jd').order_by(Order.paid_time.asc()).all()
+    # orders = db.session.query(Order).filter_by(order_status='已付款', order_from='jd').order_by(Order.paid_time.asc()).all()
+    orders = db.session.query(Order).filter(Order.order_status.in_(['已付款', '待付款'])).filter(Order.order_from == 'jd').order_by(Order.paid_time.asc()).all()
     db.session.commit()
     list = []
     trade_id_status = {}
@@ -989,6 +993,8 @@ def jd_order_status_job():
         if order_json['code'] == 200:
             list = order_json['data']['list']
             for list_ in list:
+                if list_['validCode'] == 22:
+                    continue
                 # 选出与库里状态不同的进行接下来的处理
                 dif_status_items = find_jd_dif_order_status(list_['orderTime'], list_['skuList'], trade_id_status)
                 for item in dif_status_items:
@@ -1025,7 +1031,14 @@ def jd_order_status_job():
                                 if record.ke_tixian is not None:
                                     user.ke_tixian = round(float(user.ke_tixian) - float(record.ke_tixian), 2)
                                 db.session.commit()
-
+                    else:
+                        _order = db.session.query(Order).filter_by(trade_parent_id=str(list_['orderTime']) + '-' + str(item['skuId'])).first()
+                        db.session.commit()
+                        _status = jd_status_map[str(item['validCode'])]
+                        _wx_status = jd_sys_status_map[str(item['validCode'])]
+                        _order.order_status = _status
+                        _order.sys_status = _wx_status
+                        db.session.commit()
 
 
 def group_time(list):
@@ -1076,7 +1089,7 @@ def tb_order_task():
     scheduler.start()
 
 
-# tb_order_status_job()
+# jd_new_order_job()
 
 # 写在main里面，IIS不会运行
 tb_order_task()
