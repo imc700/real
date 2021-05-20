@@ -255,21 +255,22 @@ def tb_new_order_job():
                             # 新增了订单,就把该用户的待提现金额+=预估金额(金额有改动,就insert到金额的记录表)
                             user = db.session.query(User).filter(User.username==first.username).first()
                             user.dai_tixian = round(float(user.dai_tixian) + float(order.actual_pre_fanli), 2)
-                            db.session.commit()
                             record = UserMoneyRecord(username=first.username, dai_tixian=order.actual_pre_fanli,
                                                      trade_parent_id=item['trade_id'])
                             db.session.add(record)
                             db.session.commit()
                         except Exception as e:
+                            db.session.rollback()
                             print('error: ',item['item_title'],item['trade_id'],'已存在于数据库,不可重复插入.')
                     else:
-                        print('#####there is a new order but cant find tpwd copyer###'+item['trade_id'])
+                        print('#####there is a new order but cant find tpwd copyer###'+str(item['trade_id']))
 
 
 def pdd_new_order_job():
+    # strptime = time.strptime('2021-05-16 22:00:00', '%Y-%m-%d %H:%M:%S')
     now = int(time.time())
+    # now = int(strptime)
     before = str((datetime.datetime.now() - datetime.timedelta(minutes=90)).timestamp()).split('.')[0]
-
     order_response = requests.get(
         'http://api.web.ecapi.cn/pinduoduo/getOauthIncrementOrderList?apkey={}&start_update_time={}&end_update_time={}&pdname=18627783779'.format(
             apkey, before, now))
@@ -316,14 +317,15 @@ def pdd_new_order_job():
                             db.session.add(record)
                             db.session.commit()
                         except Exception as e:
+                            db.session.rollback()
                             print('error: ', item['goods_name'], item['order_sn'], '已存在于数据库,不可重复插入.')
                     else:
-                        print('#####there is a new order but cant find tpwd copyer###'+item['order_sn'])
+                        print('#####there is a new order but cant find tpwd copyer###'+str(item['order_sn']))
 
 
 def jd_new_order_job():
     now = time.strftime("%Y%m%d%H", time.localtime())
-    # now = '2021050520'
+    # now = '2021051620'
     order_response = requests.get(
         'http://api.web.ecapi.cn/jingdong/getJdUnionOrders?apkey={}&time={}&type=1&pageNo=1&pageSize=100&key_id={}'.format(
             apkey, now, key_id))
@@ -333,11 +335,11 @@ def jd_new_order_job():
         for list_ in list:
             for item in list_['skuList']:
                 # 判断是否存在于订单表.不存在就插入订单表
-                trade_parent_id__firstOrder = db.session.query(Order).filter(Order.trade_parent_id == list_['orderTime']).first()
+                trade_parent_id__firstOrder = db.session.query(Order).filter(Order.trade_parent_id == str(list_['orderTime'])+'-'+str(item['skuId'])).first()
                 if trade_parent_id__firstOrder:
-                    print(list_['orderTime'], 'already in db.')
+                    print(str(list_['orderTime'])+'-'+str(item['skuId']), 'already in db.')
                 else:
-                    print(list_['orderTime'], 'not in db.')
+                    print(str(list_['orderTime'])+'-'+str(item['skuId']), 'not in db.')
                     # 找出这个订单属于谁.默认给离付款时间最近发送过该itemid的人
                     first = db.session.query(CopyTwdRecord).filter(CopyTwdRecord.item_id == item['skuId']).order_by(
                         CopyTwdRecord.create_time.desc()).first()
@@ -369,9 +371,10 @@ def jd_new_order_job():
                             db.session.add(record)
                             db.session.commit()
                         except Exception as e:
+                            db.session.rollback()
                             print('error: ',item['skuName'], str(list_['orderTime'])+'-'+str(item['skuId']), '已存在于数据库,不可重复插入.')
                     else:
-                        print('#####there is a new order but cant find tpwd copyer###'+list_['orderTime'])
+                        print('#####there is a new order but cant find tpwd copyer###'+str(list_['orderTime']))
 
 
 
@@ -829,8 +832,9 @@ def tb_order_status_job():
     查order表状态为已付款的订单,按paid_time智能排序.
     :return:
     """
-    orders = db.session.query(Order).filter_by(order_status='已付款', order_from='tb').order_by(Order.paid_time.asc()).all()
-    db.session.commit()
+    # orders = db.session.query(Order).filter_by(order_status='已付款', order_from='tb').order_by(Order.paid_time.asc()).all()
+    orders = db.session.query(Order).filter(Order.order_status == '已付款').filter(Order.order_from == 'tb').order_by(Order.paid_time.asc()).all()
+    # db.session.commit()
     list = []
     trade_id_status = {}
     for order in orders:
@@ -900,7 +904,6 @@ def pdd_order_status_job():
     :return:
     """
     orders = db.session.query(Order).filter(Order.order_from=='pdd').filter(or_(Order.order_status.like('已付款'), Order.order_status.like('已成团'), Order.order_status.like('1'))).order_by(Order.paid_time.asc()).all()
-    db.session.commit()
     list = []
     trade_id_status = {}
     for order in orders:
@@ -920,10 +923,8 @@ def pdd_order_status_job():
         order_json = order_response.json()
         if order_json['code'] == 200:
             list_ = order_json['data']['order_list']
-            print(flag_now, 'pdd当前时段查到订单数量为:', len(list_))
             # 把_list与当前订单状态一致的,直接从_list删除
             list_ = find_dif_status_pdd_order(list_)
-            print(flag_now, 'pdd当前时段跟库里比对后查到订单状态有变化的数量为:', len(list_))
             for item in list_:
                 # 判断该订单状态是否为12(已付款),不是就更新
                 _order = db.session.query(Order).filter_by(trade_parent_id=item['order_sn']).first()
@@ -966,8 +967,11 @@ def pdd_order_status_job():
 def find_jd_dif_order_status(trade_parent_id, items, trade_id_status):
     new_items = []
     for item in items:
-        if trade_id_status[str(trade_parent_id) + '-' + str(item['skuId'])] != jd_status_map[str(item['validCode'])]:
-            new_items.append(item)
+        try:
+            if trade_id_status[str(trade_parent_id) + '-' + str(item['skuId'])] != jd_status_map[str(item['validCode'])]:
+                new_items.append(item)
+        except Exception as e:
+            pass
     return new_items
 
 
@@ -978,7 +982,6 @@ def jd_order_status_job():
     """
     # orders = db.session.query(Order).filter_by(order_status='已付款', order_from='jd').order_by(Order.paid_time.asc()).all()
     orders = db.session.query(Order).filter(Order.order_status.in_(['已付款', '待付款'])).filter(Order.order_from == 'jd').order_by(Order.paid_time.asc()).all()
-    db.session.commit()
     list = []
     trade_id_status = {}
     for order in orders:
@@ -1081,11 +1084,11 @@ def tb_order_task():
     scheduler.init_app(app)
     # 淘宝联盟查询订单的定时任务，每隔60s执行1次
     scheduler.add_job(func=tb_new_order_job, trigger='interval', seconds=60, id='tb_order_task')
-    scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=300, id='tb_upd_order_status_task')
-    scheduler.add_job(func=jd_new_order_job, trigger='interval', seconds=60, id='jd_order_task')
-    scheduler.add_job(func=jd_order_status_job, trigger='interval', seconds=300, id='jd_upd_order_status_task')
-    scheduler.add_job(func=pdd_new_order_job, trigger='interval', seconds=60, id='pdd_order_task')
-    scheduler.add_job(func=pdd_order_status_job, trigger='interval', seconds=300, id='pdd_upd_order_status_task')
+    scheduler.add_job(func=tb_order_status_job, trigger='interval', seconds=293, id='tb_upd_order_status_task')
+    scheduler.add_job(func=jd_new_order_job, trigger='interval', seconds=67, id='jd_order_task')
+    scheduler.add_job(func=jd_order_status_job, trigger='interval', seconds=301, id='jd_upd_order_status_task')
+    scheduler.add_job(func=pdd_new_order_job, trigger='interval', seconds=73, id='pdd_order_task')
+    scheduler.add_job(func=pdd_order_status_job, trigger='interval', seconds=307, id='pdd_upd_order_status_task')
     scheduler.start()
 
 
