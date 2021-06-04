@@ -150,8 +150,8 @@ class CopyTwdRecord(db.Model):
 
 pdd_status_map = {'-1': '未支付', '0': '已支付', '2': '确认收货', '3': '审核成功','1':'已成团','4':'审核失败','5':'已经结算','8':'无佣金订单','10':'已处罚'}
 tk_status_map = {'12': '付款', '13': '关闭', '14': '确认收货', '3': '结算成功'}
-jd_status_map = {'16': '已付款', '17': '已完成', '18': '已结算', '15': '待付款', '22': '已失效'}
-jd_sys_status_map = {'16': '待提现', '17': '可提现', '18': '已结算', '15': '待付款', '22': '已失效'}
+jd_status_map = {'16': '已付款', '17': '已完成', '18': '已结算', '15': '待付款', '22': '已失效', '3': '已失效'}
+jd_sys_status_map = {'16': '待提现', '17': '可提现', '18': '已结算', '15': '待付款', '22': '已失效', '3': '已失效'}
 wx_status_map = {'12': '待提现', '13': '关闭', '14': '可提现', '3': '结算成功'}
 
 
@@ -996,8 +996,8 @@ def jd_order_status_job():
         if order_json['code'] == 200:
             list = order_json['data']['list']
             for list_ in list:
-                if list_['validCode'] == 22:
-                    continue
+                # if list_['validCode'] == 22:
+                #     continue
                 # 选出与库里状态不同的进行接下来的处理
                 dif_status_items = find_jd_dif_order_status(list_['orderTime'], list_['skuList'], trade_id_status)
                 for item in dif_status_items:
@@ -1023,7 +1023,7 @@ def jd_order_status_job():
                                                      trade_parent_id=_order.trade_parent_id)
                             db.session.add(record)
                             db.session.commit()
-                        if int(item['validCode']) < 15:
+                        if int(item['validCode']) < 15 or int(item['validCode']) == 22:
                             # (订单关闭)了的话,应追溯该订单号的所有金额来往,还原回去.
                             records = db.session.query(UserMoneyRecord).filter_by(trade_parent_id=_order.trade_parent_id).all()
                             db.session.commit()
@@ -1031,8 +1031,18 @@ def jd_order_status_job():
                                 user = db.session.query(User).filter_by(username=_order.username).first()
                                 if record.dai_tixian is not None:
                                     user.dai_tixian = round(float(user.dai_tixian) - float(record.dai_tixian), 2)
+                                    record = UserMoneyRecord(username=user.username,
+                                                             dai_tixian=- float(record.dai_tixian),
+                                                             trade_parent_id=_order.trade_parent_id)
+                                    db.session.add(record)
+                                    db.session.commit()
                                 if record.ke_tixian is not None:
                                     user.ke_tixian = round(float(user.ke_tixian) - float(record.ke_tixian), 2)
+                                    record = UserMoneyRecord(username=user.username,
+                                                             ke_tixian=- float(record.ke_tixian),
+                                                             trade_parent_id=_order.trade_parent_id)
+                                    db.session.add(record)
+                                    db.session.commit()
                                 db.session.commit()
                     else:
                         _order = db.session.query(Order).filter_by(trade_parent_id=str(list_['orderTime']) + '-' + str(item['skuId'])).first()
@@ -1092,7 +1102,7 @@ def tb_order_task():
     scheduler.start()
 
 
-# jd_new_order_job()
+jd_order_status_job()
 
 # 写在main里面，IIS不会运行
 tb_order_task()
