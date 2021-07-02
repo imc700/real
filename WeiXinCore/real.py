@@ -355,10 +355,10 @@ class TextResult:
             self.max_commission_rate = float(response_json['data']['max_commission_rate'])
             if self.has_coupon:
                 self.quanzhi = float(response_json['data']['youhuiquan'])
-                self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 100.0, 2)
+                self.fanxian = round((self.ori_price - self.quanzhi) * self.max_commission_rate / 100.0 * 0.7, 2)
             else:
                 self.quanzhi = 0
-                self.fanxian = round(self.ori_price * self.max_commission_rate / 100.0, 2)
+                self.fanxian = round(self.ori_price * self.max_commission_rate / 100.0 * 0.7, 2)
             self.mykoulin = response_json['data']['tpwd_simple']
             self.tar_price = round(self.ori_price - self.quanzhi, 2)
             self.final_price = round(self.tar_price - self.fanxian, 2)
