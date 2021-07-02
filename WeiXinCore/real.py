@@ -363,6 +363,7 @@ class TextResult:
             self.tar_price = round(self.ori_price - self.quanzhi, 2)
             self.final_price = round(self.tar_price - self.fanxian, 2)
             # todo 此处的前端详情页要接收淘口令去走接口拿同样的数据显示在页面.因为不知道如何把json对象包在链接里,后期优化建议是用户查询数据后存在数据库,详情页直接取数据库不走云商接口.
+            # SpringTask.java -n100 修改成 order.setActualPreFanli(df.format(jo.getDoubleValue("pub_share_pre_fee") * 0.7)+"");
             self.url = details_url + str(self.item_id) + '&username=' + str(self.username)
 
     def handle_to_str(self):
